@@ -1,7 +1,9 @@
 import customtkinter as ctk
 
 class FloatingMenu(ctk.CTkToplevel):
+    """FloatingMenu class"""
     def __init__(self, width, height, x=0, y=0):
+        """Constructor for FloatingMenu class"""
         super().__init__()
         self.overrideredirect(True)
         self.geometry(f"{width}x{height}+{x}+{y}")
