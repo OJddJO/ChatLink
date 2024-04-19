@@ -46,9 +46,10 @@ class App(ctk.CTk):
                 self.username = ""
             else:
                 self.username = settings["username"]
-                self.settingsTab_usernameEntry.insert(ctk.END, settings["username"])
-                self.settingsTab_usernameEntry.configure(state="disabled")
-                self.settingsTab_usernameButton.configure(state="disabled")
+                if self.username != "":
+                    self.settingsTab_usernameEntry.insert(ctk.END, settings["username"])
+                    self.settingsTab_usernameEntry.configure(state="disabled")
+                    self.settingsTab_usernameButton.configure(state="disabled")
             if "ip" in settings and "port" in settings:
                 if settings["ip"] != "" and settings["port"] != "":
                     self.settingsTab_IPEntry.insert(ctk.END, settings["ip"])
@@ -80,8 +81,16 @@ class App(ctk.CTk):
 
     # Network
     def connect(self):
-        self._HOST = self.settingsTab_IPEntry.get()
-        self._PORT = int(self.settingsTab_portEntry.get())
+        try:
+            self._HOST = self.settingsTab_IPEntry.get()
+        except Exception as e:
+            self.settingsTab_log.insert(ctk.END, f"Error: IP: {e}\n")
+            return
+        try:
+            self._PORT = int(self.settingsTab_portEntry.get())
+        except Exception as e:
+            self.settingsTab_log.insert(ctk.END, f"Error: Port: {e}\n")
+            return
         try:
             self.client.connect((self._HOST, self._PORT))
         except Exception as e:
@@ -170,6 +179,10 @@ class App(ctk.CTk):
     def setCurrentChannel(self, channel:str):
         self.currentChannel = channel
 
+    def setCurrentPrivate(self, channel:str):
+        self.currentGroup = "private"
+        self.currentChannel = channel
+
     def saveSettings(self):
         settings = {
             "username": self.settingsTab_usernameEntry.get(),
@@ -209,6 +222,10 @@ class App(ctk.CTk):
         self.friendsTab_friendsFrame.grid(row=0, column=0, rowspan=2, padx=5, pady=(0, 5), sticky="nsew")
         self.friendsTab_friendsFrame.grid_columnconfigure(0, weight=1)
 
+        self.friendsTab_addFriendButton = ctk.CTkButton(self.friendsTab_friendsFrame, text="Add Friend", corner_radius=5)
+        self.friendsTab_addFriendButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        self.friendsTab_addFriendButton.bind("<Button-1>", self.addFriendWindow)
+
         self.friendsTab_chatFrame = ctk.CTkScrollableFrame(self.friendsTab, fg_color="grey15")
         self.friendsTab_chatFrame.grid(row=0, column=1, columnspan=2, padx=5, pady=(0, 5), sticky="nsew")
         self.friendsTab_chatFrame.grid_columnconfigure(0, weight=1)
@@ -234,9 +251,17 @@ class App(ctk.CTk):
         self.groupsTab_groupsFrame.grid(row=0, column=0, padx=5, pady=(0, 5), sticky="nsew")
         self.groupsTab_groupsFrame.grid_columnconfigure(0, weight=1)
 
+        self.groupsTab_addGroupButton = ctk.CTkButton(self.groupsTab_groupsFrame, text="Add Group", corner_radius=5)
+        self.groupsTab_addGroupButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        self.groupsTab_addGroupButton.bind("<Button-1>", self.addGroupWindow)
+
         self.groupsTab_channelFrame = ctk.CTkScrollableFrame(self.groupsTab, width=150, fg_color="grey15")
         self.groupsTab_channelFrame.grid(row=1, column=0, rowspan=2, padx=5, pady=5, sticky="nsew")
         self.groupsTab_channelFrame.grid_columnconfigure(0, weight=1)
+
+        self.groupsTab_addChannelButton = ctk.CTkButton(self.groupsTab_channelFrame, text="Add Channel", corner_radius=5)
+        self.groupsTab_addChannelButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        self.groupsTab_addChannelButton.bind("<Button-1>", self.addChannelWindow)
 
         self.groupsTab_chatFrame = ctk.CTkScrollableFrame(self.groupsTab, fg_color="grey15")
         self.groupsTab_chatFrame.grid(row=0, column=1, rowspan=2, padx=5, pady=(0, 5), sticky="nsew")
@@ -294,6 +319,54 @@ class App(ctk.CTk):
 
         # Test (Message with long text)
         # self.addFriendMessage("OJd_dJO", "OJd_dJO", "16/04/2024 11:51", "Lorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.")
+
+    def addFriendWindow(self, event:any):
+        window = FloatingMenu(200, 100, event.x_root, event.y_root)
+        window.config(bg="grey15")
+        entry = ctk.CTkEntry(window, fg_color="grey20", placeholder_text="Friend")
+        entry.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        button = ctk.CTkButton(window, text="Add", corner_radius=5, command=lambda: self.addFriend(entry.get()))
+        button.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+        button.bind("<Button-1>", lambda event: window.after(100, window.destroy))
+
+    def addFriend(self, friend:str):
+        self.friendsMessages = []
+        friendButton = ctk.CTkButton(self.friendsTab_friendsFrame, text=friend, fg_color="grey20", corner_radius=5)
+        nb = len(self.friendsTab_friendsFrame.winfo_children())
+        friendButton.grid(row=nb, column=0, padx=5, pady=5, sticky="nsew")
+        friendButton.bind("<Button-1>", lambda event: self.setCurrentPrivate(friend))
+
+    def addGroupWindow(self, event:any):
+        window = FloatingMenu(200, 100, event.x_root, event.y_root)
+        window.config(bg="grey15")
+        entry = ctk.CTkEntry(window, fg_color="grey20", placeholder_text="Group")
+        entry.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        button = ctk.CTkButton(window, text="Add", corner_radius=5, command=lambda: self.addGroup(entry.get()))
+        button.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+        button.bind("<Button-1>", lambda event: window.after(100, window.destroy))
+
+    def addGroup(self, group:str):
+        self.groupsMessages = []
+        groupButton = ctk.CTkButton(self.groupsTab_groupsFrame, text=group, fg_color="grey20", corner_radius=5)
+        nb = len(self.groupsTab_groupsFrame.winfo_children())
+        groupButton.grid(row=nb, column=0, padx=5, pady=5, sticky="nsew")
+        groupButton.bind("<Button-1>", lambda event: self.setCurrentGroup(group))
+
+    def addChannelWindow(self, event:any):
+        window = FloatingMenu(200, 100, event.x_root, event.y_root)
+        window.config(bg="grey15")
+        entry = ctk.CTkEntry(window, fg_color="grey20", placeholder_text="Channel")
+        entry.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        button = ctk.CTkButton(window, text="Add", corner_radius=5, command=lambda: self.addChannel(entry.get()))
+        button.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+        button.bind("<Button-1>", lambda event: window.after(100, window.destroy))
+
+    def addChannel(self, channel:str):
+        self.groupsMessages = []
+        channelButton = ctk.CTkButton(self.groupsTab_channelFrame, text=channel, fg_color="grey20", corner_radius=5)
+        nb = len(self.groupsTab_channelFrame.winfo_children())
+        channelButton.grid(row=nb, column=0, padx=5, pady=5, sticky="nsew")
+        channelButton.bind("<Button-1>", lambda event: self.setCurrentChannel(channel))
 
     def addFriendMessage(self, sender:str, date:str, message:str):
         today = datetime.now().strftime("%d/%m/%Y")
