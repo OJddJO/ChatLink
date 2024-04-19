@@ -2,16 +2,16 @@ import socket
 import threading
 import os
 import json
+from datetime import datetime
 
 class Server:
     def __init__(self):
         # initialize server files
-        if os.path.exists("./data") == False:
-            os.mkdir("./data")
-            json.dump({}, open("./data/users.json", "w"))
-            json.dump({}, open("./data/groups.json", "w"))
-            json.dump({}, open("./data/privateMessages.json", "w"))
-
+        if not os.path.exists("./serverData"):
+            os.mkdir("./serverData")
+            json.dump({}, open("./serverData/users.json", "w"))
+            json.dump({}, open("./serverData/groups.json", "w"))
+            json.dump({}, open("./serverData/privateMessages.json", "w"))
         self._HOST = input("Enter the server IP address: ")
         self._PORT = int(input("Enter the server port: "))
         self._BUFFER = 1024
@@ -23,46 +23,19 @@ class Server:
         self._running = True
         print(f"Server is listening on {self._HOST}:{self._PORT}")
 
-    def handleConsoleInput(self):
-        while self._running:
-            cmd = input()
-            match cmd:
-                case "exit":
-                    self._running = False
-                    print("Server shutting down...")
-                    for conn in self._clients:
-                        conn.close()
-                    break
-
     def start(self):
-        consoleThread = threading.Thread(target=self.handleConsoleInput)
-        consoleThread.start()
-        self.acceptConn()
-
-    def acceptConn(self):
         while self._running:
             conn, addr = self._server.accept()
             thread = threading.Thread(target=self.handleClient, args=(conn, addr))
             thread.start()
         self._server.close()
 
-    def initClient(self, username):
-        users = json.load(open("./data/users.json", "r"))
-        if username not in users:
-            users[username] = {
-                "friends": [],
-                "groups": []
-            }
-            json.dump(users, open("./data/users.json", "w"))
-        data = users[username]
-        return data
-
     def handleClient(self, conn, addr):
         print(f"New connection from {addr}")
         self._clients.append(conn)
         self._addresses.append(addr)
-
         username = conn.recv(self._BUFFER).decode("utf-8")
+        conn.send("Connected to the server".encode("utf-8"))
         print(f"Client {username} at {addr}: Connected")
 
         while self._running:
@@ -71,7 +44,9 @@ class Server:
                 if not data:
                     print(f"Client {username} at {addr}: Disconnected")
                     break
-                conn.sendall(data)
+                data = eval(data)
+                response = self.manageData(data)
+                conn.send(str(response).encode("utf-8"))
             except Exception as e:
                 print(f"Client {username} at {addr} lost connection: {e}")
                 break
@@ -79,6 +54,52 @@ class Server:
         conn.close()
         self._clients.remove(conn)
         self._addresses.remove(addr)
+
+    def manageData(self, data):
+        try:
+            if data["group"] == "private":
+                message = data["msg"]["message"]
+                sender = data["msg"]["sender"]
+                receiver = data["msg"]["channel"]
+                channel = ",".join(sorted([sender, receiver]))
+                privateMessages = json.load(open("./serverData/privateMessages.json", "r"))
+                if data["msg"]["message"] != "":
+                    data = {
+                        "sender": sender,
+                        "channel": receiver,
+                        "message": message,
+                        "time": datetime.now().strftime("%d/%m/%Y %H:%M")
+                    }
+                    if channel not in privateMessages:
+                        privateMessages[channel] = []
+                    privateMessages[channel].append(data)
+                    if len(privateMessages[channel]) > 100:
+                        privateMessages[channel].pop(0)
+                    json.dump(privateMessages, open("./serverData/privateMessages.json", "w"))
+                return channel, privateMessages[channel]
+            else:
+                message = data["msg"]["message"]
+                sender = data["msg"]["sender"]
+                group = data["msg"]["group"]
+                channel = data["msg"]["channel"]
+                groups = json.load(open("./serverData/groups.json", "r"))
+                if data["msg"]["message"] != "":
+                    data = {
+                        "sender": sender,
+                        "message": message,
+                        "time": datetime.now().strftime("%d/%m/%Y %H:%M")
+                    }
+                    if group not in groups:
+                        groups[group] = {}
+                    if channel not in groups[group]:
+                        groups[group][channel] = []
+                    groups[group][channel].append(data)
+                    if len(groups[group][channel]) > 100:
+                        groups[group][channel].pop(0)
+                    json.dump(groups, open("./serverData/groups.json", "w"))
+                return channel, groups[group][channel]
+        except Exception as e:
+            pass
 
 
 if __name__ == "__main__":

@@ -2,37 +2,10 @@ import customtkinter as ctk
 import socket
 import os
 import json
+import threading
 from PIL import Image
 from datetime import datetime
 from classes.FloatingMenu import FloatingMenu
-
-class Network:
-    def __init__(self, host:str, port:int):
-        self.HOST = host
-        self.PORT = port
-        self._BUFFER = 1024
-        self._client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._connected = False
-
-    def connect(self, username:str):
-        try:
-            self._client.connect((self._HOST, self._PORT))
-            self._connected = True
-            return (f"Connected to server at {self._HOST}:{self._PORT}", self.send(username))
-        except Exception as e:
-            return e
-
-    def disconnect(self):
-        self._client.close()
-        self._connected = False
-        return "Disconnected from server"
-
-    def send(self, data:dict):
-        try:
-            self._client.send(str(data).encode("utf-8"))
-            return self._client.recv(self._BUFFER).decode("utf-8")
-        except socket.error as e:
-            return e
 
 class App(ctk.CTk):
     def __init__(self):
@@ -54,43 +27,167 @@ class App(ctk.CTk):
         self.initWidgets()
         self.bind("<Configure>", self.resizeRequest)
 
-        if not os.path.exists("./data"): # Initialize user data
-            os.mkdir("./data")
-            json.dump({}, open("./data/settings.json", "w"))
-            json.dump({}, open("./data/groups.json", "w"))
+        # Initialize network client
+        self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._BUFFER = 1024
+
+        self.path = f"./data" # Initialize data
+        if not os.path.exists(self.path): # Initialize user data
+            os.mkdir(self.path)
             json.dump({}, open("./data/privateMessages.json", "w"))
+            json.dump({}, open("./data/groups.json", "w"))
+            json.dump({}, open("./data/settings.json", "w"))
+            self.username = ""
+            self._HOST = "" # Set default values for settings
+            self._PORT = ""
+        else:
+            settings = json.load(open(f"./data/settings.json")) # Load settings
+            if "username" not in settings:
+                self.username = ""
+            else:
+                self.username = settings["username"]
+                self.settingsTab_usernameEntry.insert(ctk.END, settings["username"])
+                self.settingsTab_usernameEntry.configure(state="disabled")
+                self.settingsTab_usernameButton.configure(state="disabled")
+            if "ip" in settings and "port" in settings:
+                if settings["ip"] != "" and settings["port"] != "":
+                    self.settingsTab_IPEntry.insert(ctk.END, settings["ip"])
+                    self.settingsTab_portEntry.insert(ctk.END, settings["port"])
+                    self._HOST = settings["ip"]
+                    self._PORT = int(settings["port"])
+                    log = self.client.connect()
+                    self.settingsTab_log.insert(ctk.END, log + "\n")
+                else :
+                    self._HOST = ""
+                    self._PORT = ""
+            else:
+                self._HOST = ""
+                self._PORT = ""
 
-        self.username = "OJd_dJO"
+        self.privateMessages = json.load(open(f"{self.path}/privateMessages.json"))
+        self.groups = json.load(open(f"{self.path}/groups.json"))
+        self.privateMessagesWidgets = []
+        self.groupsChannelsWidgets = []
+        self.groupsMessagesWidgets = []
+        self.currentGroup = "private"
+        self.currentChannel = ""
         self.msg = {
-            "type": "none",
             "sender": self.username,
-            "group": "",
-            "recipient": "",
-        }
-        self.network = Network("", 0)
-
-    def sendPrivateMessage(self):
-        self.msg["type"] = "private"
-        self.msg["recipient"] = "OJd_dJO"
-        self.msg["message"] = self.friendsTab_inputEntry.get("1.0", ctk.END)
-        self.sendData(self.makeData())
-
-    # def sendGroupMessage(self):
-    #     self.msg["type"] = "group"
-    #     self.msg["group"] = ""
-    #     self.msg["recipient"] = ""
-    #     self.msg["message"] = self.groupsTab_inputEntry.get("1.0", ctk.END)
-    #     self.sendData(self.makeData())
-
-    def sendData(self, data:dict):
-        return self.network.send(data)
-
-    def makeData(self):
-        return {
-            "msg": self.msg,
-            "username": self.msg["sender"]
+            "group": self.currentGroup,
+            "channel": self.currentChannel,
+            "message": ""
         }
 
+    # Network
+    def connect(self):
+        self._HOST = self.settingsTab_IPEntry.get()
+        self._PORT = int(self.settingsTab_portEntry.get())
+        try:
+            self.client.connect((self._HOST, self._PORT))
+        except Exception as e:
+            self.settingsTab_log.insert(ctk.END, f"Error: {e}\n")
+            return
+        try:
+            self.client.send(self.username.encode("utf-8"))
+            self.settingsTab_log.insert(ctk.END, self.client.recv(self._BUFFER).decode("utf-8") + "\n")
+        except Exception as e:
+            self.settingsTab_log.insert(ctk.END, f"Error: {e}\n")
+            return
+        self.saveSettings()
+        threading.Thread(target=self.send).start()
+    
+    def send(self):
+        while True:
+            data = str({
+                "msg": self.msg,
+                "username": self.username,
+                "group": self.currentGroup,
+                "channel": self.currentChannel
+            })
+            self.client.send(data.encode("utf-8"))
+            self.msg["message"] = ""
+            self.manageData(self.client.recv(self._BUFFER).decode("utf-8"))
+
+    def manageData(self, data):
+        try:
+            data = eval(data)
+            if self.currentGroup == "private": # Private
+                if data[0] not in self.privateMessages: # Create channel if not exists and add all the messages
+                    self.privateMessages[data[0]] = data[1]
+                    for element in data[1]:
+                        self.addFriendMessage(element["sender"], element["time"], element["message"])
+                    self.saveData()
+                else: # Else add messages to channel
+                    changes = False
+                    for element in data[1]:
+                        if element not in self.privateMessages[data[0]]:
+                            changes = True
+                            self.privateMessages[data[0]].append(element)
+                            if len(self.privateMessages[data[0]]) > 100:
+                                self.privateMessages[data[0]].pop(0)
+                            self.addFriendMessage(element["sender"], element["time"], element["message"])
+                    if changes:
+                        self.saveData()
+            else: # Group
+                if self.currentGroup not in self.groups: # Create group if not exists
+                    self.groups[self.currentGroup] = {}
+                if data[0] not in self.groups[self.currentGroup]: # Create channel if not exists and add all the messages
+                    self.groups[self.currentGroup][data[0]] = data[1]
+                    for element in data[1]:
+                        self.addGroupMessage(element["sender"], element["time"], element["message"])
+                    self.saveData()
+                else: # Else add messages to channel
+                    changes = False
+                    for element in data[1]:
+                        if element not in self.groups[self.currentGroup][data[0]]:
+                            changes = True
+                            self.groups[self.currentGroup][data[0]].append(element)
+                            if len(self.groups[self.currentGroup][data[0]]) > 100:
+                                self.groups[self.currentGroup][data[0]].pop(0)
+                            self.addGroupMessage(element["sender"], element["time"], element["message"])
+                    if changes:
+                        self.saveData()
+        except Exception as e:
+            pass
+
+    def renderMessages(self):
+        if self.currentGroup == "private":
+            channel = ",".join(sorted([self.username, self.currentChannel]))
+            if channel in self.privateMessages:
+                for message in self.privateMessages[channel]:
+                    self.addFriendMessage(message["sender"], message["time"], message["message"])
+        if self.currentGroup in self.groups:
+            if self.currentChannel in self.groups[self.currentGroup]:
+                for message in self.groups[self.currentGroup][self.currentChannel]:
+                    self.addGroupMessage(message["sender"], message["time"], message["message"])
+
+    def setMessage(self, message:str):
+        self.msg["message"] = message
+
+    def setCurrentGroup(self, group:str):
+        self.currentGroup = group
+
+    def setCurrentChannel(self, channel:str):
+        self.currentChannel = channel
+
+    def saveSettings(self):
+        settings = {
+            "username": self.settingsTab_usernameEntry.get(),
+            "ip": self.settingsTab_IPEntry.get(),
+            "port": self.settingsTab_portEntry.get()
+        }
+        json.dump(settings, open(f"./data/settings.json", "w"))
+
+    def saveData(self):
+        json.dump(self.privateMessages, open("./data/privateMessages.json", "w"))
+        json.dump(self.groups, open("./data/groups.json", "w"))
+
+    def saveUsername(self):
+        self.saveSettings()
+        self.settingsTab_usernameEntry.configure(state="disabled")
+        self.settingsTab_usernameButton.configure(state="disabled")
+
+    # UI
     def initWidgets(self):
         # Ressources
         sendIcon = ctk.CTkImage(Image.open("./assets/send.png"))
@@ -123,7 +220,6 @@ class App(ctk.CTk):
 
         self.friendsTab_inputEntry = ctk.CTkTextbox(self.friendsTab_inputFrame, height=40, fg_color="grey20")
         self.friendsTab_inputEntry.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-
         self.friendsTab_inputButton = ctk.CTkButton(self.friendsTab_inputFrame, text="", image=sendIcon, corner_radius=5, width=10, height=10)
         self.friendsTab_inputButton.grid(row=0, column=1, padx=(0, 10), pady=10, sticky="nsew")
 
@@ -167,22 +263,26 @@ class App(ctk.CTk):
         self.settingsTab_serverTab = self.settingsTab_tabview.add("Server")
         self.settingsTab_appearanceTab = self.settingsTab_tabview.add("Appearance")
         self.settingsTab_aboutTab = self.settingsTab_tabview.add("About")
-        #Server Tab
+        # General Tab
+        self.settingsTab_generalTab.grid_columnconfigure(0, weight=1)
+        self.settingsTab_usernameEntry = ctk.CTkEntry(self.settingsTab_generalTab, fg_color="grey20", placeholder_text="Username (WARNING: Can't be changed after saving)")
+        self.settingsTab_usernameEntry.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        self.settingsTab_usernameButton = ctk.CTkButton(self.settingsTab_generalTab, text="Save", corner_radius=5, command=self.saveSettings)
+        self.settingsTab_usernameButton.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+        # Server Tab
         self.settingsTab_serverTab.grid_columnconfigure(0, weight=1)
         self.settingsTab_serverTab.grid_rowconfigure(1, weight=1)
         self.settingsTab_serverInfo = ctk.CTkFrame(self.settingsTab_serverTab, fg_color="grey15", border_width=2, corner_radius=5)
-        self.settingsTab_serverInfo.grid(row=0, column=0, columnspan=2, padx=5, pady=(0, 5), sticky="nsew")
+        self.settingsTab_serverInfo.grid(row=0, column=0, padx=5, pady=(0, 5), sticky="nsew")
         self.settingsTab_serverInfo.grid_columnconfigure(0, weight=1)
         self.settingsTab_serverLabel = ctk.CTkLabel(self.settingsTab_serverInfo, text="Server Information", fg_color="grey20", corner_radius=5)
-        self.settingsTab_serverLabel.grid(row=1, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
+        self.settingsTab_serverLabel.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
         self.settingsTab_IPEntry = ctk.CTkEntry(self.settingsTab_serverInfo, fg_color="grey20", placeholder_text="IP")
-        self.settingsTab_IPEntry.grid(row=2, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="nsew")
+        self.settingsTab_IPEntry.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="nsew")
         self.settingsTab_portEntry = ctk.CTkEntry(self.settingsTab_serverInfo, fg_color="grey20", placeholder_text="Port")
-        self.settingsTab_portEntry.grid(row=3, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="nsew")
-        self.settingsTab_connectButton = ctk.CTkButton(self.settingsTab_serverInfo, text="Connect", corner_radius=5, command=self.connectToServer)
+        self.settingsTab_portEntry.grid(row=3, column=0, padx=10, pady=(0, 10), sticky="nsew")
+        self.settingsTab_connectButton = ctk.CTkButton(self.settingsTab_serverInfo, text="Connect", corner_radius=5, command=self.connect)
         self.settingsTab_connectButton.grid(row=4, column=0, padx=10, pady=(0, 10), sticky="se")
-        self.settingsTab_disconnectButton = ctk.CTkButton(self.settingsTab_serverInfo, text="Disconnect", corner_radius=5, command=self.disconnectFromServer)
-        self.settingsTab_disconnectButton.grid(row=4, column=1, padx=(0, 10), pady=(0, 10), sticky="se")
         self.settingsTab_logFrame = ctk.CTkFrame(self.settingsTab_serverTab, fg_color="grey15", border_width=2, corner_radius=5)
         self.settingsTab_logFrame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
         self.settingsTab_logFrame.grid_columnconfigure(0, weight=1)
@@ -193,38 +293,9 @@ class App(ctk.CTk):
         self.settingsTab_log.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
 
         # Test (Message with long text)
-        self.addFriendMessage("OJd_dJO", "OJd_dJO", "16/04/2024 11:51", "Lorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.")
+        # self.addFriendMessage("OJd_dJO", "OJd_dJO", "16/04/2024 11:51", "Lorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.")
 
-    def createUserUI(self):
-        window = FloatingMenu(300, 200)
-        window.unbind("<FocusOut>")
-        window.unbind("<Escape>")
-
-        mainFrame = ctk.CTkFrame(window, fg_color="grey15")
-        mainFrame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-
-        usernameInput = ctk.CTkEntry(mainFrame, fg_color="grey20", placeholder_text="Username")
-        usernameInput.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-        confirmButton = ctk.CTkButton(mainFrame, text="Confirm", corner_radius=5)
-        confirmButton.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-
-    def connectToServer(self):
-        ip = self.settingsTab_IPEntry.get()
-        port = self.settingsTab_portEntry.get()
-        if ip == "" or port == "":
-            self.settingsTab_log.insert(ctk.END, "Please enter IP and Port\n")
-            return
-        self.network.HOST = ip
-        self.network.PORT = int(port)
-        data = self.network.connect("OJd_dJO") #test
-        self.settingsTab_log.insert(ctk.END, f"{data[0]}\n")
-        self.settingsTab_log.insert(ctk.END, f"{data[1]}\n")
-
-    def disconnectFromServer(self):
-        data = self.network.disconnect()
-        self.settingsTab_log.insert(ctk.END, f"{data}\n")
-
-    def addFriendMessage(self, friend:str, sender:str, date:str, message:str):
+    def addFriendMessage(self, sender:str, date:str, message:str):
         today = datetime.now().strftime("%d/%m/%Y")
         date = date.split(" ")[1] if date.split(" ")[0] == today else date
         msg = ctk.CTkLabel(self.friendsTab_chatFrame, text=f"{sender}       {date}\n{message}", fg_color="grey20", corner_radius=5, anchor="w", justify="left")
@@ -247,41 +318,94 @@ class App(ctk.CTk):
             copyFrame = ctk.CTkFrame(mainFrame, border_width=2, corner_radius=5)
             copyFrame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
             copyFrame.grid_columnconfigure(0, weight=1)
-            copyButton = ctk.CTkButton(copyFrame, text="Copy All", fg_color="grey15", corner_radius=5)
+            copyButton = ctk.CTkButton(copyFrame, text="Copy All", fg_color="grey15", corner_radius=5, command=copyAll)
             copyButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-            copyMessageButton = ctk.CTkButton(copyFrame, text="Copy Message", fg_color="grey15", corner_radius=5)
+            copyMessageButton = ctk.CTkButton(copyFrame, text="Copy Message", fg_color="grey15", corner_radius=5, command=copyMessage)
             copyMessageButton.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
             replyFrame = ctk.CTkFrame(mainFrame, border_width=2, corner_radius=5)
             replyFrame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
             replyFrame.grid_columnconfigure(0, weight=1)
-            replyButton = ctk.CTkButton(replyFrame, text="Reply", fg_color="grey15", corner_radius=5)
+            replyButton = ctk.CTkButton(replyFrame, text="Reply", fg_color="grey15", corner_radius=5, command=reply)
             replyButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
 
             window.bind("<Button-1>", lambda event: window.after(100, window.destroy))
-            def copyAll(event:any):
+            def copyAll():
                 self.clipboard_clear()
                 self.clipboard_append(msg.cget("text"))
                 self.update()
-            copyButton.bind("<Button-1>", copyAll)
-            def copyMessage(event:any):
+            def copyMessage():
                 self.clipboard_clear()
                 text = msg.cget("text").split("\n")[1:]
                 self.clipboard_append("\n".join(text))
                 self.update()
-            copyMessageButton.bind("<Button-1>", copyMessage)
-            def reply(event:any):
-                self.friendsTab_inputEntry.insert("1.0", f"@{sender} ")
-            replyButton.bind("<Button-1>", reply)
+            def reply():
+                text = msg.cget("text").split("\n")
+                for i in range(len(text)):
+                    text[i] = "│    " + text[i]
+                    self.friendsTab_inputEntry.insert(f"{i+1}.0", text[i] + "\n")
+                self.friendsTab_inputEntry.insert(ctk.END, "└─\n")
+                self.friendsTab_inputEntry.see(ctk.END)
+                self.friendsTab_inputEntry.focus()
 
         msg.bind("<Double-Button-1>", createSelectable)
         msg.bind("<Button-3>", createMenu)
-        if friend not in self.friendsMessages:
-            self.friendsMessages[friend] = []
-        self.friendsMessages[friend].append(msg)
-        if len(self.friendsMessages[friend]) > self._MAX_MESSAGE:
-            self.friendsMessages[friend][0].destroy()
-            self.friendsMessages[friend].pop(0)
+
+    def addGroupMessage(self, sender:str, date:str, message:str):
+        today = datetime.now().strftime("%d/%m/%Y")
+        date = date.split(" ")[1] if date.split(" ")[0] == today else date
+        msg = ctk.CTkLabel(self.groupsTab_chatFrame, text=f"{sender}       {date}\n{message}", fg_color="grey20", corner_radius=5, anchor="w", justify="left")
+        msg.grid(row=len(self.groupsMessages), column=0, padx=5, pady=5, sticky="nsew")
+        msg.configure(wraplength=msg.winfo_width()-10)
+
+        def createSelectable(event:any):
+            window = FloatingMenu(msg.winfo_width()+20, msg.winfo_height()+40, msg.winfo_rootx()-10, msg.winfo_rooty()-10)
+            textbox = ctk.CTkTextbox(window, fg_color="grey20", wrap="word")
+            textbox.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+            textbox.insert("1.0", msg.cget("text"))
+            textbox.configure(state="disabled")
+
+        def createMenu(event:any):
+            window = FloatingMenu(150, 200, event.x_root, event.y_root)
+            mainFrame = ctk.CTkFrame(window, fg_color="grey20")
+            mainFrame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+            mainFrame.grid_columnconfigure(0, weight=1)
+
+            copyFrame = ctk.CTkFrame(mainFrame, border_width=2, corner_radius=5)
+            copyFrame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+            copyFrame.grid_columnconfigure(0, weight=1)
+            copyButton = ctk.CTkButton(copyFrame, text="Copy All", fg_color="grey15", corner_radius=5, command=copyAll)
+            copyButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+            copyMessageButton = ctk.CTkButton(copyFrame, text="Copy Message", fg_color="grey15", corner_radius=5, command=copyMessage)
+            copyMessageButton.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+
+            replyFrame = ctk.CTkFrame(mainFrame, border_width=2, corner_radius=5)
+            replyFrame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+            replyFrame.grid_columnconfigure(0, weight=1)
+            replyButton = ctk.CTkButton(replyFrame, text="Reply", fg_color="grey15", corner_radius=5, command=reply)
+            replyButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+            
+            window.bind("<Button-1>", lambda event: window.after(100, window.destroy))
+            def copyAll():
+                self.clipboard_clear()
+                self.clipboard_append(msg.cget("text"))
+                self.update()
+            def copyMessage():
+                self.clipboard_clear()
+                text = msg.cget("text").split("\n")[1:]
+                self.clipboard_append("\n".join(text))
+                self.update()
+            def reply():
+                text = msg.cget("text").split("\n")
+                for i in range(len(text)):
+                    text[i] = "│    " + text[i]
+                    self.groupsTab_inputEntry.insert(f"{i+1}.0", text[i] + "\n")
+                self.groupsTab_inputEntry.insert(ctk.END, "└─\n")
+                self.groupsTab_inputEntry.see(ctk.END)
+                self.groupsTab_inputEntry.focus()
+
+        msg.bind("<Double-Button-1>", createSelectable)
+        msg.bind("<Button-3>", createMenu)
 
     # Handle main window resize event
     def resizeRequest(self, event:any):
@@ -299,6 +423,9 @@ class App(ctk.CTk):
                 # resize message only if visible
                 if msg.winfo_viewable():
                     msg.configure(wraplength=msg.winfo_width()-10)
+
+    def run(self):
+        self.mainloop()
 
 
 if __name__ == "__main__":

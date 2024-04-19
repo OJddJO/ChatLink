@@ -121,5 +121,5 @@ class Client:
         self.send()
 
 if __name__ == "__main__":
-    client = Client("127.0.0.1", 5000)
+    client = Client("154.51.39.84",1429)
     client.run()
