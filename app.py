@@ -11,13 +11,13 @@ from classes.NotificationPopup import NotificationPopup
 
 class App(ctk.CTk):
     def __init__(self):
-        super().__init__() # Init ctk
+        super().__init__(("grey80", "grey15")) # Init ctk
         self.title("ChatLink")
         self.iconbitmap("./assets/icon.ico")
         self.geometry("800x480")
         self.minsize(800, 480)
         self.resizable(True, True)
-        self.config(bg="grey15")
+        ctk.set_appearance_mode("dark")
 
         self._MAX_MESSAGE = 100 # Init variables
         self.runNetwork = True
@@ -67,6 +67,15 @@ class App(ctk.CTk):
             else:
                 self._HOST = ""
                 self._PORT = ""
+            if "theme" in settings:
+                self.theme.set(settings["theme"])
+                ctk.set_appearance_mode(settings["theme"])
+                if settings["theme"] == "dark":
+                    self.settingsTab_switchTheme.select()
+                elif settings["theme"] == "light":
+                    self.settingsTab_switchTheme.deselect()
+            else:
+                self.settingsTab_switchTheme.select()
 
         self.privateMessages = json.load(open(f"{self.path}/privateMessages.json"))
         self.groups = json.load(open(f"{self.path}/groups.json"))
@@ -105,7 +114,7 @@ class App(ctk.CTk):
             except Exception as e:
                 self.settingsTab_log.insert(ctk.END, f"Error: {e}\n")
                 return
-            self.saveSettings()
+            self.saveServerInfo()
             threading.Thread(target=self.send).start()
 
     def send(self):
@@ -190,14 +199,6 @@ class App(ctk.CTk):
                 for message in self.groups[self.currentGroup][self.currentChannel]:
                     self.addGroupMessage(message["sender"], message["time"], message["message"])
 
-    def saveSettings(self):
-        settings = {
-            "username": self.settingsTab_usernameEntry.get(),
-            "ip": self.settingsTab_IPEntry.get(),
-            "port": self.settingsTab_portEntry.get()
-        }
-        json.dump(settings, open(f"./data/settings.json", "w"))
-
     def saveData(self):
         json.dump(self.privateMessages, open("./data/privateMessages.json", "w"))
         json.dump(self.groups, open("./data/groups.json", "w"))
@@ -208,9 +209,22 @@ class App(ctk.CTk):
             if self.username.__contains__(","):
                 NotificationPopup(self, "Username can't contain ','")
             else:
-                self.saveSettings()
+                settings = json.load(open(f"./data/settings.json"))
+                settings["username"] = self.username
+                json.dump(settings, open(f"./data/settings.json", "w"))
                 self.settingsTab_usernameEntry.configure(state="disabled")
                 self.settingsTab_usernameButton.configure(state="disabled")
+
+    def saveServerInfo(self):
+        settings = json.load(open(f"./data/settings.json"))
+        settings["ip"] = self._HOST
+        settings["port"] = self._PORT
+        json.dump(settings, open(f"./data/settings.json", "w"))
+
+    def saveTheme(self):
+        settings = json.load(open(f"./data/settings.json"))
+        settings["theme"] = self.theme.get()
+        json.dump(settings, open(f"./data/settings.json", "w"))
 
     # UI
     def initWidgets(self):
@@ -218,7 +232,7 @@ class App(ctk.CTk):
         sendIcon = ctk.CTkImage(Image.open("./assets/send.png"))
 
         # Tabs
-        self.tabView = ctk.CTkTabview(self, anchor="nw", fg_color="grey20")
+        self.tabView = ctk.CTkTabview(self, anchor="nw", fg_color=("grey85", "grey20"))
         self.tabView.grid(row=0, column=0, padx=10, pady=(0, 10), sticky="nsew")
         self.friendsTab = self.tabView.add("Friends")
         self.groupsTab = self.tabView.add("Groups")
@@ -231,7 +245,7 @@ class App(ctk.CTk):
         self.friendsTab.grid_columnconfigure(0, weight=1)
         self.friendsTab.grid_columnconfigure(1, weight=8)
 
-        self.friendsTab_friendsFrame = ctk.CTkScrollableFrame(self.friendsTab, width=150, fg_color="grey15")
+        self.friendsTab_friendsFrame = ctk.CTkScrollableFrame(self.friendsTab, width=150, fg_color=("grey80", "grey15"))
         self.friendsTab_friendsFrame.grid(row=0, column=0, rowspan=3, padx=5, pady=(0, 5), sticky="nsew")
         self.friendsTab_friendsFrame.grid_columnconfigure(0, weight=1)
 
@@ -239,18 +253,18 @@ class App(ctk.CTk):
         self.friendsTab_addFriendButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         self.friendsTab_addFriendButton.bind("<Button-1>", self.addFriendWindow)
 
-        self.friendsTab_titleBar = ctk.CTkLabel(self.friendsTab, text="", fg_color="grey15", corner_radius=5)
+        self.friendsTab_titleBar = ctk.CTkLabel(self.friendsTab, text="", fg_color=("grey80", "grey15"), corner_radius=5)
         self.friendsTab_titleBar.grid(row=0, column=1, padx=5, pady=(0, 5), sticky="nsew")
-        self.friendsTab_chatFrame = ctk.CTkScrollableFrame(self.friendsTab, fg_color="grey15")
+        self.friendsTab_chatFrame = ctk.CTkScrollableFrame(self.friendsTab, fg_color=("grey80", "grey15"))
         self.friendsTab_chatFrame.grid(row=1, column=1, columnspan=2, padx=5, pady=5, sticky="nsew")
         self.friendsTab_chatFrame.grid_columnconfigure(0, weight=1)
 
-        self.friendsTab_inputFrame = ctk.CTkFrame(self.friendsTab, fg_color="grey15", height=50)
+        self.friendsTab_inputFrame = ctk.CTkFrame(self.friendsTab, fg_color=("grey80", "grey15"), height=50)
         self.friendsTab_inputFrame.grid(row=2, column=1, columnspan=2, padx=5, pady=5, sticky="nsew")
         self.friendsTab_inputFrame.grid_columnconfigure(0, weight=8)
         self.friendsTab_inputFrame.grid_rowconfigure(0, weight=1)
 
-        self.friendsTab_inputEntry = ctk.CTkTextbox(self.friendsTab_inputFrame, height=40, fg_color="grey20")
+        self.friendsTab_inputEntry = ctk.CTkTextbox(self.friendsTab_inputFrame, height=40, fg_color=("grey85", "grey20"))
         self.friendsTab_inputEntry.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
         self.friendsTab_inputButton = ctk.CTkButton(self.friendsTab_inputFrame, text="", image=sendIcon, corner_radius=5, width=10, height=10, command=lambda: self.setMessage(self.friendsTab_inputEntry.get("1.0", "end-1c")))
         self.friendsTab_inputButton.grid(row=0, column=1, padx=(0, 10), pady=10, sticky="nsew")
@@ -261,7 +275,7 @@ class App(ctk.CTk):
         self.groupsTab.grid_columnconfigure(0, weight=1)
         self.groupsTab.grid_columnconfigure(1, weight=8)
 
-        self.groupsTab_groupsFrame = ctk.CTkScrollableFrame(self.groupsTab, width=150, fg_color="grey15")
+        self.groupsTab_groupsFrame = ctk.CTkScrollableFrame(self.groupsTab, width=150, fg_color=("grey80", "grey15"))
         self.groupsTab_groupsFrame.grid(row=0, column=0, padx=5, pady=(0, 5), sticky="nsew")
         self.groupsTab_groupsFrame.grid_columnconfigure(0, weight=1)
 
@@ -269,7 +283,7 @@ class App(ctk.CTk):
         self.groupsTab_addGroupButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         self.groupsTab_addGroupButton.bind("<Button-1>", self.addGroupWindow)
 
-        self.groupsTab_channelFrame = ctk.CTkScrollableFrame(self.groupsTab, width=150, fg_color="grey15")
+        self.groupsTab_channelFrame = ctk.CTkScrollableFrame(self.groupsTab, width=150, fg_color=("grey80", "grey15"))
         self.groupsTab_channelFrame.grid(row=1, column=0, rowspan=2, padx=5, pady=5, sticky="nsew")
         self.groupsTab_channelFrame.grid_columnconfigure(0, weight=1)
 
@@ -277,24 +291,24 @@ class App(ctk.CTk):
         self.groupsTab_addChannelButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         self.groupsTab_addChannelButton.bind("<Button-1>", self.addChannelWindow)
 
-        self.groupsTab_rightFrame = ctk.CTkFrame(self.groupsTab, fg_color="grey20")
+        self.groupsTab_rightFrame = ctk.CTkFrame(self.groupsTab, fg_color=("grey85", "grey20"))
         self.groupsTab_rightFrame.grid(row=0, column=1, rowspan=2, sticky="nsew")
         self.groupsTab_rightFrame.grid_columnconfigure(0, weight=1)
         self.groupsTab_rightFrame.grid_rowconfigure(0, weight=1)
         self.groupsTab_rightFrame.grid_rowconfigure(1, weight=20)
         self.groupsTab_rightFrame.grid_rowconfigure(2, weight=1)
-        self.groupsTab_titleBar = ctk.CTkLabel(self.groupsTab_rightFrame, text="", fg_color="grey15", corner_radius=5)
+        self.groupsTab_titleBar = ctk.CTkLabel(self.groupsTab_rightFrame, text="", fg_color=("grey80", "grey15"), corner_radius=5)
         self.groupsTab_titleBar.grid(row=0, column=0, padx=5, pady=(0, 5), sticky="nsew")
-        self.groupsTab_chatFrame = ctk.CTkScrollableFrame(self.groupsTab_rightFrame, fg_color="grey15")
+        self.groupsTab_chatFrame = ctk.CTkScrollableFrame(self.groupsTab_rightFrame, fg_color=("grey80", "grey15"))
         self.groupsTab_chatFrame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
         self.groupsTab_chatFrame.grid_columnconfigure(0, weight=1)
 
-        self.groupsTab_inputFrame = ctk.CTkFrame(self.groupsTab_rightFrame, fg_color="grey15", height=50)
+        self.groupsTab_inputFrame = ctk.CTkFrame(self.groupsTab_rightFrame, fg_color=("grey80", "grey15"), height=50)
         self.groupsTab_inputFrame.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
         self.groupsTab_inputFrame.grid_columnconfigure(0, weight=8)
         self.groupsTab_inputFrame.grid_rowconfigure(0, weight=1)
 
-        self.groupsTab_inputEntry = ctk.CTkTextbox(self.groupsTab_inputFrame, height=40, fg_color="grey20")
+        self.groupsTab_inputEntry = ctk.CTkTextbox(self.groupsTab_inputFrame, height=40, fg_color=("grey85", "grey20"))
         self.groupsTab_inputEntry.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
 
         self.groupsTab_inputButton = ctk.CTkButton(self.groupsTab_inputFrame, text="", image=sendIcon, corner_radius=5, width=10, height=10, command=lambda: self.setMessage(self.groupsTab_inputEntry.get("1.0", "end-1c")))
@@ -304,7 +318,7 @@ class App(ctk.CTk):
         self.settingsTab.grid_rowconfigure(0, weight=1)
         self.settingsTab.grid_columnconfigure(0, weight=1)
 
-        self.settingsTab_tabview = ctk.CTkTabview(self.settingsTab, anchor="nw", fg_color="grey15")
+        self.settingsTab_tabview = ctk.CTkTabview(self.settingsTab, anchor="nw", fg_color=("grey80", "grey15"))
         self.settingsTab_tabview.grid(row=0, column=0, padx=10, pady=(0, 10), sticky="nsew")
         self.settingsTab_generalTab = self.settingsTab_tabview.add("General")
         self.settingsTab_serverTab = self.settingsTab_tabview.add("Server")
@@ -312,37 +326,70 @@ class App(ctk.CTk):
         self.settingsTab_aboutTab = self.settingsTab_tabview.add("About")
         # General Tab
         self.settingsTab_generalTab.grid_columnconfigure(0, weight=1)
-        self.settingsTab_usernameEntry = ctk.CTkEntry(self.settingsTab_generalTab, fg_color="grey20", placeholder_text="Username (WARNING: Can't be changed after saving unless reset)")
-        self.settingsTab_usernameEntry.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-        self.settingsTab_usernameButton = ctk.CTkButton(self.settingsTab_generalTab, text="Save", corner_radius=5, command=self.saveUsername)
-        self.settingsTab_usernameButton.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
-        self.settingsTab_resetButton = ctk.CTkButton(self.settingsTab_generalTab, text="Reset All Data", corner_radius=5, command=self.resetData)
-        self.settingsTab_resetButton.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
+        self.settingsTab_usernameFrame = ctk.CTkFrame(self.settingsTab_generalTab, fg_color=("grey80", "grey15"), border_width=2, corner_radius=5)
+        self.settingsTab_usernameFrame.grid(row=0, column=0, padx=5, pady=(0, 5), sticky="nsew")
+        self.settingsTab_usernameFrame.grid_columnconfigure(0, weight=1)
+        self.settingsTab_usernameLabel = ctk.CTkLabel(self.settingsTab_usernameFrame, text="Username", fg_color=("grey85", "grey20"), corner_radius=5)
+        self.settingsTab_usernameLabel.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        self.settingsTab_usernameEntry = ctk.CTkEntry(self.settingsTab_usernameFrame, fg_color=("grey85", "grey20"), placeholder_text="Username (WARNING: Can't be changed after saving unless reset)")
+        self.settingsTab_usernameEntry.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
+        self.settingsTab_usernameButton = ctk.CTkButton(self.settingsTab_usernameFrame, text="Save", corner_radius=5, command=self.saveUsername)
+        self.settingsTab_usernameButton.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="se")
+        self.settingsTab_resetFrame = ctk.CTkFrame(self.settingsTab_generalTab, fg_color=("grey80", "grey15"), border_width=2, corner_radius=5)
+        self.settingsTab_resetFrame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+        self.settingsTab_resetFrame.grid_columnconfigure(0, weight=1)
+        self.settingsTab_resetLabel = ctk.CTkLabel(self.settingsTab_resetFrame, text="Reset", fg_color=("grey85", "grey20"), corner_radius=5)
+        self.settingsTab_resetLabel.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        self.settingsTab_resetButton = ctk.CTkButton(self.settingsTab_resetFrame, text="Reset All Data and Close App", fg_color="#910000", hover_color="#660000", corner_radius=5, command=self.resetData)
+        self.settingsTab_resetButton.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
         # Server Tab
         self.settingsTab_serverTab.grid_columnconfigure(0, weight=1)
         self.settingsTab_serverTab.grid_rowconfigure(1, weight=1)
-        self.settingsTab_serverInfo = ctk.CTkFrame(self.settingsTab_serverTab, fg_color="grey15", border_width=2, corner_radius=5)
+        self.settingsTab_serverInfo = ctk.CTkFrame(self.settingsTab_serverTab, fg_color=("grey80", "grey15"), border_width=2, corner_radius=5)
         self.settingsTab_serverInfo.grid(row=0, column=0, padx=5, pady=(0, 5), sticky="nsew")
         self.settingsTab_serverInfo.grid_columnconfigure(0, weight=1)
-        self.settingsTab_serverLabel = ctk.CTkLabel(self.settingsTab_serverInfo, text="Server Information", fg_color="grey20", corner_radius=5)
+        self.settingsTab_serverLabel = ctk.CTkLabel(self.settingsTab_serverInfo, text="Server Information", fg_color=("grey85", "grey20"), corner_radius=5)
         self.settingsTab_serverLabel.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-        self.settingsTab_IPEntry = ctk.CTkEntry(self.settingsTab_serverInfo, fg_color="grey20", placeholder_text="IP")
+        self.settingsTab_IPEntry = ctk.CTkEntry(self.settingsTab_serverInfo, fg_color=("grey85", "grey20"), placeholder_text="IP")
         self.settingsTab_IPEntry.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="nsew")
-        self.settingsTab_portEntry = ctk.CTkEntry(self.settingsTab_serverInfo, fg_color="grey20", placeholder_text="Port")
+        self.settingsTab_portEntry = ctk.CTkEntry(self.settingsTab_serverInfo, fg_color=("grey85", "grey20"), placeholder_text="Port")
         self.settingsTab_portEntry.grid(row=3, column=0, padx=10, pady=(0, 10), sticky="nsew")
         self.settingsTab_connectButton = ctk.CTkButton(self.settingsTab_serverInfo, text="Connect", corner_radius=5, command=self.connect)
         self.settingsTab_connectButton.grid(row=4, column=0, padx=10, pady=(0, 10), sticky="se")
-        self.settingsTab_logFrame = ctk.CTkFrame(self.settingsTab_serverTab, fg_color="grey15", border_width=2, corner_radius=5)
+        self.settingsTab_logFrame = ctk.CTkFrame(self.settingsTab_serverTab, fg_color=("grey80", "grey15"), border_width=2, corner_radius=5)
         self.settingsTab_logFrame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
         self.settingsTab_logFrame.grid_columnconfigure(0, weight=1)
         self.settingsTab_logFrame.grid_rowconfigure(1, weight=1)
-        self.settingsTab_logLabel = ctk.CTkLabel(self.settingsTab_logFrame, text="Logs", fg_color="grey20", corner_radius=5)
+        self.settingsTab_logLabel = ctk.CTkLabel(self.settingsTab_logFrame, text="Logs", fg_color=("grey85", "grey20"), corner_radius=5)
         self.settingsTab_logLabel.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-        self.settingsTab_log = ctk.CTkTextbox(self.settingsTab_logFrame, fg_color="grey20", height=80, wrap="word")
+        self.settingsTab_log = ctk.CTkTextbox(self.settingsTab_logFrame, fg_color=("grey85", "grey20"), height=80, wrap="word")
         self.settingsTab_log.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
+        # Appearance Tab
+        self.settingsTab_appearanceTab.grid_columnconfigure(0, weight=1)
+        self.settingsTab_appearanceFrame = ctk.CTkFrame(self.settingsTab_appearanceTab, fg_color=("grey80", "grey15"), border_width=2, corner_radius=5)
+        self.settingsTab_appearanceFrame.grid(row=0, column=0, padx=5, pady=(0, 5), sticky="nsew")
+        self.settingsTab_appearanceFrame.grid_columnconfigure(0, weight=1)
+        self.settingsTab_themeLabel = ctk.CTkLabel(self.settingsTab_appearanceFrame, text="Theme", fg_color=("grey85", "grey20"), corner_radius=5)
+        self.settingsTab_themeLabel.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        self.theme = ctk.StringVar(value=ctk.get_appearance_mode())
+        self.settingsTab_switchTheme = ctk.CTkSwitch(self.settingsTab_appearanceFrame, text="Dark Mode", fg_color=("grey85", "grey20"), variable=self.theme, onvalue="dark", offvalue="light", corner_radius=5, command=self.changeTheme)
+        self.settingsTab_switchTheme.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
+        # About Tab
+        self.settingsTab_aboutTab.grid_columnconfigure(0, weight=1)
+        self.settingsTab_aboutFrame = ctk.CTkFrame(self.settingsTab_aboutTab, fg_color=("grey80", "grey15"), border_width=2, corner_radius=5)
+        self.settingsTab_aboutFrame.grid(row=0, column=0, padx=5, pady=(0, 5), sticky="nsew")
+        self.settingsTab_aboutFrame.grid_columnconfigure(0, weight=1)
+        self.settingsTab_aboutLabel = ctk.CTkLabel(self.settingsTab_aboutFrame, text="About", fg_color=("grey85", "grey20"), corner_radius=5)
+        self.settingsTab_aboutLabel.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        self.settingsTab_aboutIcon = ctk.CTkImage(Image.open("./assets/icon.png"), size=(100, 100))
+        self.settingsTab_aboutIconLabel = ctk.CTkLabel(self.settingsTab_aboutFrame, text="", image=self.settingsTab_aboutIcon, corner_radius=5, height=100)
+        self.settingsTab_aboutIconLabel.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        self.settingsTab_aboutText = ctk.CTkLabel(self.settingsTab_aboutFrame, text="This is a simple chat application made with Python and Tkinter\n\nAuthor: OJd_dJO", fg_color=("grey85", "grey20"), corner_radius=5)
+        self.settingsTab_aboutText.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
 
-        # Test (Message with long text)
-        # self.addFriendMessage("OJd_dJO", "OJd_dJO", "16/04/2024 11:51", "Lorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.")
+    def changeTheme(self):
+        ctk.set_appearance_mode(self.theme.get())
+        self.saveTheme()
 
     # Reset data
     def resetData(self):
@@ -357,20 +404,20 @@ class App(ctk.CTk):
     def initFriends(self):
         for friend in self.privateMessages:
             friend = friend.split(",")[1] if friend.split(",")[0] == self.username else friend.split(",")[0]
-            friendButton = ctk.CTkButton(self.friendsTab_friendsFrame, text=friend, fg_color="grey20", corner_radius=5)
+            friendButton = ctk.CTkButton(self.friendsTab_friendsFrame, text=friend, fg_color=("grey85", "grey20"), corner_radius=5)
             friendButton.grid(row=len(self.friendsTab_friendsFrame.winfo_children()), column=0, padx=5, pady=5, sticky="nsew")
             friendButton.bind("<Button-1>", lambda event: self.setCurrentPrivate(friend))
 
     def initGroups(self):
         for group in self.groups:
-            groupButton = ctk.CTkButton(self.groupsTab_groupsFrame, text=group, fg_color="grey20", corner_radius=5)
+            groupButton = ctk.CTkButton(self.groupsTab_groupsFrame, text=group, fg_color=("grey85", "grey20"), corner_radius=5)
             groupButton.grid(row=len(self.groupsTab_groupsFrame.winfo_children()), column=0, padx=5, pady=5, sticky="nsew")
             groupButton.bind("<Button-1>", lambda event: self.setCurrentGroup(group))
 
     def initChannels(self):
         if self.currentGroup in self.groups:
             for channel in self.groups[self.currentGroup]:
-                channelButton = ctk.CTkButton(self.groupsTab_channelFrame, text=channel, fg_color="grey20", corner_radius=5)
+                channelButton = ctk.CTkButton(self.groupsTab_channelFrame, text=channel, fg_color=("grey85", "grey20"), corner_radius=5)
                 channelButton.grid(row=len(self.groupsTab_channelFrame.winfo_children()), column=0, padx=5, pady=5, sticky="nsew")
                 channelButton.bind("<Button-1>", lambda event: self.setCurrentChannel(channel))
 
@@ -380,16 +427,19 @@ class App(ctk.CTk):
 
     def addFriendWindow(self, event:any):
         window = FloatingMenu(200, 100, event.x_root, event.y_root)
-        window.config(bg="grey15")
-        entry = ctk.CTkEntry(window, fg_color="grey20", placeholder_text="Friend")
+        window.configure(fg_color=("grey80", "grey15"))
+        entry = ctk.CTkEntry(window, fg_color=("grey85", "grey20"), placeholder_text="Friend")
         entry.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         button = ctk.CTkButton(window, text="Add", corner_radius=5, command=lambda: self.addFriend(entry.get()))
         button.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
-        button.bind("<Button-1>", lambda event: window.after(100, window.destroy))
+        def closeWindow():
+            if entry.get() != "":
+                window.destroy()
+        button.bind("<Button-1>", lambda event: window.after(100, closeWindow))
 
     def addFriend(self, friend:str):
         if friend != "":
-            friendButton = ctk.CTkButton(self.friendsTab_friendsFrame, text=friend, fg_color="grey20", corner_radius=5)
+            friendButton = ctk.CTkButton(self.friendsTab_friendsFrame, text=friend, fg_color=("grey85", "grey20"), corner_radius=5)
             nb = len(self.friendsTab_friendsFrame.winfo_children())
             friendButton.grid(row=nb, column=0, padx=5, pady=5, sticky="nsew")
             friendButton.bind("<Button-1>", lambda event: self.setCurrentPrivate(friend))
@@ -398,16 +448,19 @@ class App(ctk.CTk):
 
     def addGroupWindow(self, event:any):
         window = FloatingMenu(200, 100, event.x_root, event.y_root)
-        window.config(bg="grey15")
-        entry = ctk.CTkEntry(window, fg_color="grey20", placeholder_text="Group")
+        window.config(bg=("grey80", "grey15"))
+        entry = ctk.CTkEntry(window, fg_color=("grey85", "grey20"), placeholder_text="Group")
         entry.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         button = ctk.CTkButton(window, text="Add", corner_radius=5, command=lambda: self.addGroup(entry.get()))
         button.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
-        button.bind("<Button-1>", lambda event: window.after(100, window.destroy))
+        def closeWindow():
+            if entry.get() != "":
+                window.destroy()
+        button.bind("<Button-1>", lambda event: window.after(100, closeWindow))
 
     def addGroup(self, group:str):
         if group != "":
-            groupButton = ctk.CTkButton(self.groupsTab_groupsFrame, text=group, fg_color="grey20", corner_radius=5)
+            groupButton = ctk.CTkButton(self.groupsTab_groupsFrame, text=group, fg_color=("grey85", "grey20"), corner_radius=5)
             nb = len(self.groupsTab_groupsFrame.winfo_children())
             groupButton.grid(row=nb, column=0, padx=5, pady=5, sticky="nsew")
             groupButton.bind("<Button-1>", lambda event: self.setCurrentGroup(group))
@@ -416,16 +469,19 @@ class App(ctk.CTk):
 
     def addChannelWindow(self, event:any):
         window = FloatingMenu(200, 100, event.x_root, event.y_root)
-        window.config(bg="grey15")
-        entry = ctk.CTkEntry(window, fg_color="grey20", placeholder_text="Channel")
+        window.configure(fg_color=("grey80", "grey15"))
+        entry = ctk.CTkEntry(window, fg_color=("grey85", "grey20"), placeholder_text="Channel")
         entry.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         button = ctk.CTkButton(window, text="Add", corner_radius=5, command=lambda: self.addChannel(entry.get()))
         button.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
-        button.bind("<Button-1>", lambda event: window.after(100, window.destroy))
+        def closeWindow():
+            if entry.get() != "":
+                window.destroy()
+        button.bind("<Button-1>", lambda event: window.after(100, closeWindow))
 
     def addChannel(self, channel:str):
         if channel != "":
-            channelButton = ctk.CTkButton(self.groupsTab_channelFrame, text=channel, fg_color="grey20", corner_radius=5)
+            channelButton = ctk.CTkButton(self.groupsTab_channelFrame, text=channel, fg_color=("grey85", "grey20"), corner_radius=5)
             nb = len(self.groupsTab_channelFrame.winfo_children())
             channelButton.grid(row=nb, column=0, padx=5, pady=5, sticky="nsew")
             channelButton.bind("<Button-1>", lambda event: self.setCurrentChannel(channel))
@@ -481,13 +537,13 @@ class App(ctk.CTk):
     def addFriendMessage(self, sender:str, date:str, message:str):
         today = datetime.now().strftime("%d/%m/%Y")
         date = date.split(" ")[1] if date.split(" ")[0] == today else date
-        msg = ctk.CTkLabel(self.friendsTab_chatFrame, text=f"{sender}       {date}\n{message}", fg_color="grey20", corner_radius=5, anchor="w", justify="left")
+        msg = ctk.CTkLabel(self.friendsTab_chatFrame, text=f"{sender}       {date}\n{message}", fg_color=("grey85", "grey20"), corner_radius=5, anchor="w", justify="left")
         msg.grid(row=len(self.friendsTab_chatFrame.winfo_children()), column=0, padx=5, pady=5, sticky="nsew")
         msg.configure(wraplength=msg.winfo_width()-10)
 
         def createSelectable(event:any):
             window = FloatingMenu(msg.winfo_width()+20, msg.winfo_height()+40, msg.winfo_rootx()-10, msg.winfo_rooty()-10)
-            textbox = ctk.CTkTextbox(window, fg_color="grey20", wrap="word")
+            textbox = ctk.CTkTextbox(window, fg_color=("grey85", "grey20"), wrap="word")
             textbox.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
             textbox.insert("1.0", msg.cget("text"))
             textbox.configure(state="disabled")
@@ -512,22 +568,22 @@ class App(ctk.CTk):
                 self.friendsTab_inputEntry.focus()
 
             window = FloatingMenu(150, 200, event.x_root, event.y_root)
-            mainFrame = ctk.CTkFrame(window, fg_color="grey20")
+            mainFrame = ctk.CTkFrame(window, fg_color=("grey85", "grey20"))
             mainFrame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
             mainFrame.grid_columnconfigure(0, weight=1)
 
             copyFrame = ctk.CTkFrame(mainFrame, border_width=2, corner_radius=5)
             copyFrame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
             copyFrame.grid_columnconfigure(0, weight=1)
-            copyButton = ctk.CTkButton(copyFrame, text="Copy All", fg_color="grey15", corner_radius=5, command=copyAll)
+            copyButton = ctk.CTkButton(copyFrame, text="Copy All", fg_color=("grey80", "grey15"), corner_radius=5, command=copyAll)
             copyButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-            copyMessageButton = ctk.CTkButton(copyFrame, text="Copy Message", fg_color="grey15", corner_radius=5, command=copyMessage)
+            copyMessageButton = ctk.CTkButton(copyFrame, text="Copy Message", fg_color=("grey80", "grey15"), corner_radius=5, command=copyMessage)
             copyMessageButton.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
             replyFrame = ctk.CTkFrame(mainFrame, border_width=2, corner_radius=5)
             replyFrame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
             replyFrame.grid_columnconfigure(0, weight=1)
-            replyButton = ctk.CTkButton(replyFrame, text="Reply", fg_color="grey15", corner_radius=5, command=reply)
+            replyButton = ctk.CTkButton(replyFrame, text="Reply", fg_color=("grey80", "grey15"), corner_radius=5, command=reply)
             replyButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
 
             window.bind("<Button-1>", lambda event: window.after(100, window.destroy))
@@ -538,13 +594,13 @@ class App(ctk.CTk):
     def addGroupMessage(self, sender:str, date:str, message:str):
         today = datetime.now().strftime("%d/%m/%Y")
         date = date.split(" ")[1] if date.split(" ")[0] == today else date
-        msg = ctk.CTkLabel(self.groupsTab_chatFrame, text=f"{sender}       {date}\n{message}", fg_color="grey20", corner_radius=5, anchor="w", justify="left")
+        msg = ctk.CTkLabel(self.groupsTab_chatFrame, text=f"{sender}       {date}\n{message}", fg_color=("grey85", "grey20"), corner_radius=5, anchor="w", justify="left")
         msg.grid(row=len(self.groupsTab_chatFrame.winfo_children()), column=0, padx=5, pady=5, sticky="nsew")
         msg.configure(wraplength=msg.winfo_width()-10)
 
         def createSelectable(event:any):
             window = FloatingMenu(msg.winfo_width()+20, msg.winfo_height()+40, msg.winfo_rootx()-10, msg.winfo_rooty()-10)
-            textbox = ctk.CTkTextbox(window, fg_color="grey20", wrap="word")
+            textbox = ctk.CTkTextbox(window, fg_color=("grey85", "grey20"), wrap="word")
             textbox.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
             textbox.insert("1.0", msg.cget("text"))
             textbox.configure(state="disabled")
@@ -569,22 +625,22 @@ class App(ctk.CTk):
                 self.groupsTab_inputEntry.focus()
 
             window = FloatingMenu(150, 200, event.x_root, event.y_root)
-            mainFrame = ctk.CTkFrame(window, fg_color="grey20")
+            mainFrame = ctk.CTkFrame(window, fg_color=("grey85", "grey20"))
             mainFrame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
             mainFrame.grid_columnconfigure(0, weight=1)
 
             copyFrame = ctk.CTkFrame(mainFrame, border_width=2, corner_radius=5)
             copyFrame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
             copyFrame.grid_columnconfigure(0, weight=1)
-            copyButton = ctk.CTkButton(copyFrame, text="Copy All", fg_color="grey15", corner_radius=5, command=copyAll)
+            copyButton = ctk.CTkButton(copyFrame, text="Copy All", fg_color=("grey80", "grey15"), corner_radius=5, command=copyAll)
             copyButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-            copyMessageButton = ctk.CTkButton(copyFrame, text="Copy Message", fg_color="grey15", corner_radius=5, command=copyMessage)
+            copyMessageButton = ctk.CTkButton(copyFrame, text="Copy Message", fg_color=("grey80", "grey15"), corner_radius=5, command=copyMessage)
             copyMessageButton.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
             replyFrame = ctk.CTkFrame(mainFrame, border_width=2, corner_radius=5)
             replyFrame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
             replyFrame.grid_columnconfigure(0, weight=1)
-            replyButton = ctk.CTkButton(replyFrame, text="Reply", fg_color="grey15", corner_radius=5, command=reply)
+            replyButton = ctk.CTkButton(replyFrame, text="Reply", fg_color=("grey80", "grey15"), corner_radius=5, command=reply)
             replyButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
             
             window.bind("<Button-1>", lambda event: window.after(100, window.destroy))
@@ -620,6 +676,5 @@ class App(ctk.CTk):
         self.mainloop()
 
 
-if __name__ == "__main__":
-    app = App()
-    app.run()
+app = App()
+app.run()
