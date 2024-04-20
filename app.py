@@ -1,11 +1,13 @@
 import customtkinter as ctk
 import socket
 import os
+import sys
 import json
 import threading
 from PIL import Image
 from datetime import datetime
 from classes.FloatingMenu import FloatingMenu
+from classes.NotificationPopup import NotificationPopup
 
 class App(ctk.CTk):
     def __init__(self):
@@ -17,10 +19,12 @@ class App(ctk.CTk):
         self.resizable(True, True)
         self.config(bg="grey15")
 
-        self._MAX_MESSAGE = 100 # Usufull variables for ctk
+        self._MAX_MESSAGE = 100 # Init variables
+        self.runNetwork = True
         self._RESIZING = False
-        self.friendsMessages = {}
-        self.groupsMessages = {}
+        self.currentGroup = "private"
+        self.currentChannel = ""
+        self.message = ""
 
         self.grid_rowconfigure(0, weight=1) # Init Widgets
         self.grid_columnconfigure(0, weight=1)
@@ -56,8 +60,7 @@ class App(ctk.CTk):
                     self.settingsTab_portEntry.insert(ctk.END, settings["port"])
                     self._HOST = settings["ip"]
                     self._PORT = int(settings["port"])
-                    log = self.client.connect()
-                    self.settingsTab_log.insert(ctk.END, log + "\n")
+                    self.connect()
                 else :
                     self._HOST = ""
                     self._PORT = ""
@@ -67,94 +70,111 @@ class App(ctk.CTk):
 
         self.privateMessages = json.load(open(f"{self.path}/privateMessages.json"))
         self.groups = json.load(open(f"{self.path}/groups.json"))
-        self.privateMessagesWidgets = []
-        self.groupsChannelsWidgets = []
-        self.groupsMessagesWidgets = []
-        self.currentGroup = "private"
-        self.currentChannel = ""
-        self.msg = {
-            "sender": self.username,
-            "group": self.currentGroup,
-            "channel": self.currentChannel,
-            "message": ""
-        }
+
+        self.protocol("WM_DELETE_WINDOW", self.close)
+
+    def close(self):
+        self.runNetwork = False
+        self.client.close()
+        self.destroy()
+        sys.exit(0)
 
     # Network
     def connect(self):
-        try:
-            self._HOST = self.settingsTab_IPEntry.get()
-        except Exception as e:
-            self.settingsTab_log.insert(ctk.END, f"Error: IP: {e}\n")
-            return
-        try:
-            self._PORT = int(self.settingsTab_portEntry.get())
-        except Exception as e:
-            self.settingsTab_log.insert(ctk.END, f"Error: Port: {e}\n")
-            return
-        try:
-            self.client.connect((self._HOST, self._PORT))
-        except Exception as e:
-            self.settingsTab_log.insert(ctk.END, f"Error: {e}\n")
-            return
-        try:
-            self.client.send(self.username.encode("utf-8"))
-            self.settingsTab_log.insert(ctk.END, self.client.recv(self._BUFFER).decode("utf-8") + "\n")
-        except Exception as e:
-            self.settingsTab_log.insert(ctk.END, f"Error: {e}\n")
-            return
-        self.saveSettings()
-        threading.Thread(target=self.send).start()
-    
+        if self.username == "": # Check if username is set
+            self.settingsTab_log.insert(ctk.END, "Error: Username not set\n")
+        else:
+            try:
+                self._HOST = self.settingsTab_IPEntry.get()
+            except Exception as e:
+                self.settingsTab_log.insert(ctk.END, f"Error: IP: {e}\n")
+                return
+            try:
+                self._PORT = int(self.settingsTab_portEntry.get())
+            except Exception as e:
+                self.settingsTab_log.insert(ctk.END, f"Error: Port: {e}\n")
+                return
+            try:
+                self.client.connect((self._HOST, self._PORT))
+            except Exception as e:
+                self.settingsTab_log.insert(ctk.END, f"Error: {e}\n")
+                return
+            try:
+                self.client.send(self.username.encode("utf-8"))
+                self.settingsTab_log.insert(ctk.END, self.client.recv(self._BUFFER).decode("utf-8") + "\n")
+            except Exception as e:
+                self.settingsTab_log.insert(ctk.END, f"Error: {e}\n")
+                return
+            self.saveSettings()
+            threading.Thread(target=self.send).start()
+
     def send(self):
-        while True:
+        while self.runNetwork:
             data = str({
-                "msg": self.msg,
+                "msg": {
+                    "sender": self.username,
+                    "group": self.currentGroup,
+                    "channel": self.currentChannel,
+                    "message": self.message
+                },
                 "username": self.username,
                 "group": self.currentGroup,
                 "channel": self.currentChannel
             })
             self.client.send(data.encode("utf-8"))
-            self.msg["message"] = ""
+            self.message = ""
             self.manageData(self.client.recv(self._BUFFER).decode("utf-8"))
 
     def manageData(self, data):
+        currentGroup = self.currentGroup
+        currentChannel = self.currentChannel
         try:
             data = eval(data)
-            if self.currentGroup == "private": # Private
+            if currentGroup == "private": # Private
                 if data[0] not in self.privateMessages: # Create channel if not exists and add all the messages
                     self.privateMessages[data[0]] = data[1]
                     for element in data[1]:
+                        if self.currentGroup != currentGroup or self.currentChannel != element["channel"] or self.currentChannel != currentChannel:
+                            return
                         self.addFriendMessage(element["sender"], element["time"], element["message"])
-                    self.saveData()
+                    if self.currentGroup == currentGroup and self.currentChannel == data[0] and self.currentChannel == currentChannel:
+                        self.saveData()
                 else: # Else add messages to channel
                     changes = False
                     for element in data[1]:
                         if element not in self.privateMessages[data[0]]:
+                            if self.currentGroup == currentGroup and self.currentChannel == element["channel"] and self.currentChannel == currentChannel:
+                                return
                             changes = True
                             self.privateMessages[data[0]].append(element)
                             if len(self.privateMessages[data[0]]) > 100:
                                 self.privateMessages[data[0]].pop(0)
                             self.addFriendMessage(element["sender"], element["time"], element["message"])
-                    if changes:
+                    if changes and self.currentGroup == currentGroup and self.currentChannel == data[0] and self.currentChannel == currentChannel:
                         self.saveData()
             else: # Group
-                if self.currentGroup not in self.groups: # Create group if not exists
-                    self.groups[self.currentGroup] = {}
-                if data[0] not in self.groups[self.currentGroup]: # Create channel if not exists and add all the messages
-                    self.groups[self.currentGroup][data[0]] = data[1]
+                if currentGroup not in self.groups: # Create group if not exists
+                    self.groups[currentGroup] = {}
+                if data[0] not in self.groups[currentGroup]: # Create channel if not exists and add all the messages
+                    self.groups[currentGroup][data[0]] = data[1]
                     for element in data[1]:
+                        if self.currentGroup != currentGroup or self.currentChannel != element["channel"] or self.currentChannel != currentChannel:
+                            return
                         self.addGroupMessage(element["sender"], element["time"], element["message"])
-                    self.saveData()
+                    if self.currentGroup == currentGroup and self.currentChannel == data[0] and self.currentChannel == currentChannel:
+                        self.saveData()
                 else: # Else add messages to channel
                     changes = False
                     for element in data[1]:
-                        if element not in self.groups[self.currentGroup][data[0]]:
+                        if element not in self.groups[currentGroup][data[0]]:
+                            if self.currentGroup == currentGroup and self.currentChannel == element["channel"] and self.currentChannel == currentChannel:
+                                return
                             changes = True
-                            self.groups[self.currentGroup][data[0]].append(element)
-                            if len(self.groups[self.currentGroup][data[0]]) > 100:
-                                self.groups[self.currentGroup][data[0]].pop(0)
+                            self.groups[currentGroup][data[0]].append(element)
+                            if len(self.groups[currentGroup][data[0]]) > 100:
+                                self.groups[currentGroup][data[0]].pop(0)
                             self.addGroupMessage(element["sender"], element["time"], element["message"])
-                    if changes:
+                    if changes and self.currentGroup == currentGroup and self.currentChannel == data[0] and self.currentChannel == currentChannel:
                         self.saveData()
         except Exception as e:
             pass
@@ -170,19 +190,6 @@ class App(ctk.CTk):
                 for message in self.groups[self.currentGroup][self.currentChannel]:
                     self.addGroupMessage(message["sender"], message["time"], message["message"])
 
-    def setMessage(self, message:str):
-        self.msg["message"] = message
-
-    def setCurrentGroup(self, group:str):
-        self.currentGroup = group
-
-    def setCurrentChannel(self, channel:str):
-        self.currentChannel = channel
-
-    def setCurrentPrivate(self, channel:str):
-        self.currentGroup = "private"
-        self.currentChannel = channel
-
     def saveSettings(self):
         settings = {
             "username": self.settingsTab_usernameEntry.get(),
@@ -196,9 +203,14 @@ class App(ctk.CTk):
         json.dump(self.groups, open("./data/groups.json", "w"))
 
     def saveUsername(self):
-        self.saveSettings()
-        self.settingsTab_usernameEntry.configure(state="disabled")
-        self.settingsTab_usernameButton.configure(state="disabled")
+        self.username = self.settingsTab_usernameEntry.get()
+        if self.username != "":
+            if self.username.__contains__(","):
+                NotificationPopup(self, "Username can't contain ','")
+            else:
+                self.saveSettings()
+                self.settingsTab_usernameEntry.configure(state="disabled")
+                self.settingsTab_usernameButton.configure(state="disabled")
 
     # UI
     def initWidgets(self):
@@ -213,37 +225,39 @@ class App(ctk.CTk):
         self.settingsTab = self.tabView.add("Settings")
 
         # Friends Tab
-        self.friendsTab.grid_rowconfigure(0, weight=20)
-        self.friendsTab.grid_rowconfigure(1, weight=1)
+        self.friendsTab.grid_rowconfigure(0, weight=1)
+        self.friendsTab.grid_rowconfigure(1, weight=20)
+        self.friendsTab.grid_rowconfigure(2, weight=1)
         self.friendsTab.grid_columnconfigure(0, weight=1)
         self.friendsTab.grid_columnconfigure(1, weight=8)
 
         self.friendsTab_friendsFrame = ctk.CTkScrollableFrame(self.friendsTab, width=150, fg_color="grey15")
-        self.friendsTab_friendsFrame.grid(row=0, column=0, rowspan=2, padx=5, pady=(0, 5), sticky="nsew")
+        self.friendsTab_friendsFrame.grid(row=0, column=0, rowspan=3, padx=5, pady=(0, 5), sticky="nsew")
         self.friendsTab_friendsFrame.grid_columnconfigure(0, weight=1)
 
         self.friendsTab_addFriendButton = ctk.CTkButton(self.friendsTab_friendsFrame, text="Add Friend", corner_radius=5)
         self.friendsTab_addFriendButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         self.friendsTab_addFriendButton.bind("<Button-1>", self.addFriendWindow)
 
+        self.friendsTab_titleBar = ctk.CTkLabel(self.friendsTab, text="", fg_color="grey15", corner_radius=5)
+        self.friendsTab_titleBar.grid(row=0, column=1, padx=5, pady=(0, 5), sticky="nsew")
         self.friendsTab_chatFrame = ctk.CTkScrollableFrame(self.friendsTab, fg_color="grey15")
-        self.friendsTab_chatFrame.grid(row=0, column=1, columnspan=2, padx=5, pady=(0, 5), sticky="nsew")
+        self.friendsTab_chatFrame.grid(row=1, column=1, columnspan=2, padx=5, pady=5, sticky="nsew")
         self.friendsTab_chatFrame.grid_columnconfigure(0, weight=1)
 
         self.friendsTab_inputFrame = ctk.CTkFrame(self.friendsTab, fg_color="grey15", height=50)
-        self.friendsTab_inputFrame.grid(row=1, column=1, columnspan=2, padx=5, pady=5, sticky="nsew")
+        self.friendsTab_inputFrame.grid(row=2, column=1, columnspan=2, padx=5, pady=5, sticky="nsew")
         self.friendsTab_inputFrame.grid_columnconfigure(0, weight=8)
         self.friendsTab_inputFrame.grid_rowconfigure(0, weight=1)
 
         self.friendsTab_inputEntry = ctk.CTkTextbox(self.friendsTab_inputFrame, height=40, fg_color="grey20")
         self.friendsTab_inputEntry.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-        self.friendsTab_inputButton = ctk.CTkButton(self.friendsTab_inputFrame, text="", image=sendIcon, corner_radius=5, width=10, height=10)
+        self.friendsTab_inputButton = ctk.CTkButton(self.friendsTab_inputFrame, text="", image=sendIcon, corner_radius=5, width=10, height=10, command=lambda: self.setMessage(self.friendsTab_inputEntry.get("1.0", "end-1c")))
         self.friendsTab_inputButton.grid(row=0, column=1, padx=(0, 10), pady=10, sticky="nsew")
 
         # Groups Tab
         self.groupsTab.grid_rowconfigure(0, weight=1)
-        self.groupsTab.grid_rowconfigure(1, weight=20)
-        self.groupsTab.grid_rowconfigure(2, weight=1)
+        self.groupsTab.grid_rowconfigure(1, weight=1)
         self.groupsTab.grid_columnconfigure(0, weight=1)
         self.groupsTab.grid_columnconfigure(1, weight=8)
 
@@ -263,19 +277,27 @@ class App(ctk.CTk):
         self.groupsTab_addChannelButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         self.groupsTab_addChannelButton.bind("<Button-1>", self.addChannelWindow)
 
-        self.groupsTab_chatFrame = ctk.CTkScrollableFrame(self.groupsTab, fg_color="grey15")
-        self.groupsTab_chatFrame.grid(row=0, column=1, rowspan=2, padx=5, pady=(0, 5), sticky="nsew")
+        self.groupsTab_rightFrame = ctk.CTkFrame(self.groupsTab, fg_color="grey20")
+        self.groupsTab_rightFrame.grid(row=0, column=1, rowspan=2, sticky="nsew")
+        self.groupsTab_rightFrame.grid_columnconfigure(0, weight=1)
+        self.groupsTab_rightFrame.grid_rowconfigure(0, weight=1)
+        self.groupsTab_rightFrame.grid_rowconfigure(1, weight=20)
+        self.groupsTab_rightFrame.grid_rowconfigure(2, weight=1)
+        self.groupsTab_titleBar = ctk.CTkLabel(self.groupsTab_rightFrame, text="", fg_color="grey15", corner_radius=5)
+        self.groupsTab_titleBar.grid(row=0, column=0, padx=5, pady=(0, 5), sticky="nsew")
+        self.groupsTab_chatFrame = ctk.CTkScrollableFrame(self.groupsTab_rightFrame, fg_color="grey15")
+        self.groupsTab_chatFrame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
         self.groupsTab_chatFrame.grid_columnconfigure(0, weight=1)
 
-        self.groupsTab_inputFrame = ctk.CTkFrame(self.groupsTab, fg_color="grey15", height=50)
-        self.groupsTab_inputFrame.grid(row=2, column=1, padx=5, pady=5, sticky="nsew")
+        self.groupsTab_inputFrame = ctk.CTkFrame(self.groupsTab_rightFrame, fg_color="grey15", height=50)
+        self.groupsTab_inputFrame.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
         self.groupsTab_inputFrame.grid_columnconfigure(0, weight=8)
         self.groupsTab_inputFrame.grid_rowconfigure(0, weight=1)
 
         self.groupsTab_inputEntry = ctk.CTkTextbox(self.groupsTab_inputFrame, height=40, fg_color="grey20")
         self.groupsTab_inputEntry.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
 
-        self.groupsTab_inputButton = ctk.CTkButton(self.groupsTab_inputFrame, text="", image=sendIcon, corner_radius=5, width=10, height=10)
+        self.groupsTab_inputButton = ctk.CTkButton(self.groupsTab_inputFrame, text="", image=sendIcon, corner_radius=5, width=10, height=10, command=lambda: self.setMessage(self.groupsTab_inputEntry.get("1.0", "end-1c")))
         self.groupsTab_inputButton.grid(row=0, column=1, padx=(0, 10), pady=10, sticky="nsew")
 
         # Settings Tab
@@ -290,10 +312,12 @@ class App(ctk.CTk):
         self.settingsTab_aboutTab = self.settingsTab_tabview.add("About")
         # General Tab
         self.settingsTab_generalTab.grid_columnconfigure(0, weight=1)
-        self.settingsTab_usernameEntry = ctk.CTkEntry(self.settingsTab_generalTab, fg_color="grey20", placeholder_text="Username (WARNING: Can't be changed after saving)")
+        self.settingsTab_usernameEntry = ctk.CTkEntry(self.settingsTab_generalTab, fg_color="grey20", placeholder_text="Username (WARNING: Can't be changed after saving unless reset)")
         self.settingsTab_usernameEntry.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-        self.settingsTab_usernameButton = ctk.CTkButton(self.settingsTab_generalTab, text="Save", corner_radius=5, command=self.saveSettings)
+        self.settingsTab_usernameButton = ctk.CTkButton(self.settingsTab_generalTab, text="Save", corner_radius=5, command=self.saveUsername)
         self.settingsTab_usernameButton.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+        self.settingsTab_resetButton = ctk.CTkButton(self.settingsTab_generalTab, text="Reset All Data", corner_radius=5, command=self.resetData)
+        self.settingsTab_resetButton.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
         # Server Tab
         self.settingsTab_serverTab.grid_columnconfigure(0, weight=1)
         self.settingsTab_serverTab.grid_rowconfigure(1, weight=1)
@@ -320,6 +344,40 @@ class App(ctk.CTk):
         # Test (Message with long text)
         # self.addFriendMessage("OJd_dJO", "OJd_dJO", "16/04/2024 11:51", "Lorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.")
 
+    # Reset data
+    def resetData(self):
+        self.client.close()
+        os.remove(f"{self.path}/privateMessages.json")
+        os.remove(f"{self.path}/groups.json")
+        os.remove(f"{self.path}/settings.json")
+        os.rmdir(self.path)
+        sys.exit(0)
+
+    # Friends/Groups management
+    def initFriends(self):
+        for friend in self.privateMessages:
+            friend = friend.split(",")[1] if friend.split(",")[0] == self.username else friend.split(",")[0]
+            friendButton = ctk.CTkButton(self.friendsTab_friendsFrame, text=friend, fg_color="grey20", corner_radius=5)
+            friendButton.grid(row=len(self.friendsTab_friendsFrame.winfo_children()), column=0, padx=5, pady=5, sticky="nsew")
+            friendButton.bind("<Button-1>", lambda event: self.setCurrentPrivate(friend))
+
+    def initGroups(self):
+        for group in self.groups:
+            groupButton = ctk.CTkButton(self.groupsTab_groupsFrame, text=group, fg_color="grey20", corner_radius=5)
+            groupButton.grid(row=len(self.groupsTab_groupsFrame.winfo_children()), column=0, padx=5, pady=5, sticky="nsew")
+            groupButton.bind("<Button-1>", lambda event: self.setCurrentGroup(group))
+
+    def initChannels(self):
+        if self.currentGroup in self.groups:
+            for channel in self.groups[self.currentGroup]:
+                channelButton = ctk.CTkButton(self.groupsTab_channelFrame, text=channel, fg_color="grey20", corner_radius=5)
+                channelButton.grid(row=len(self.groupsTab_channelFrame.winfo_children()), column=0, padx=5, pady=5, sticky="nsew")
+                channelButton.bind("<Button-1>", lambda event: self.setCurrentChannel(channel))
+
+    def resetChannels(self):
+        for channels in self.groupsTab_channelFrame.winfo_children()[1:]:
+            channels.destroy()
+
     def addFriendWindow(self, event:any):
         window = FloatingMenu(200, 100, event.x_root, event.y_root)
         window.config(bg="grey15")
@@ -330,11 +388,13 @@ class App(ctk.CTk):
         button.bind("<Button-1>", lambda event: window.after(100, window.destroy))
 
     def addFriend(self, friend:str):
-        self.friendsMessages = []
-        friendButton = ctk.CTkButton(self.friendsTab_friendsFrame, text=friend, fg_color="grey20", corner_radius=5)
-        nb = len(self.friendsTab_friendsFrame.winfo_children())
-        friendButton.grid(row=nb, column=0, padx=5, pady=5, sticky="nsew")
-        friendButton.bind("<Button-1>", lambda event: self.setCurrentPrivate(friend))
+        if friend != "":
+            friendButton = ctk.CTkButton(self.friendsTab_friendsFrame, text=friend, fg_color="grey20", corner_radius=5)
+            nb = len(self.friendsTab_friendsFrame.winfo_children())
+            friendButton.grid(row=nb, column=0, padx=5, pady=5, sticky="nsew")
+            friendButton.bind("<Button-1>", lambda event: self.setCurrentPrivate(friend))
+        else:
+            NotificationPopup(self, "Friend can't be empty")
 
     def addGroupWindow(self, event:any):
         window = FloatingMenu(200, 100, event.x_root, event.y_root)
@@ -346,11 +406,13 @@ class App(ctk.CTk):
         button.bind("<Button-1>", lambda event: window.after(100, window.destroy))
 
     def addGroup(self, group:str):
-        self.groupsMessages = []
-        groupButton = ctk.CTkButton(self.groupsTab_groupsFrame, text=group, fg_color="grey20", corner_radius=5)
-        nb = len(self.groupsTab_groupsFrame.winfo_children())
-        groupButton.grid(row=nb, column=0, padx=5, pady=5, sticky="nsew")
-        groupButton.bind("<Button-1>", lambda event: self.setCurrentGroup(group))
+        if group != "":
+            groupButton = ctk.CTkButton(self.groupsTab_groupsFrame, text=group, fg_color="grey20", corner_radius=5)
+            nb = len(self.groupsTab_groupsFrame.winfo_children())
+            groupButton.grid(row=nb, column=0, padx=5, pady=5, sticky="nsew")
+            groupButton.bind("<Button-1>", lambda event: self.setCurrentGroup(group))
+        else:
+            NotificationPopup(self, "Group can't be empty")
 
     def addChannelWindow(self, event:any):
         window = FloatingMenu(200, 100, event.x_root, event.y_root)
@@ -362,17 +424,65 @@ class App(ctk.CTk):
         button.bind("<Button-1>", lambda event: window.after(100, window.destroy))
 
     def addChannel(self, channel:str):
-        self.groupsMessages = []
-        channelButton = ctk.CTkButton(self.groupsTab_channelFrame, text=channel, fg_color="grey20", corner_radius=5)
-        nb = len(self.groupsTab_channelFrame.winfo_children())
-        channelButton.grid(row=nb, column=0, padx=5, pady=5, sticky="nsew")
-        channelButton.bind("<Button-1>", lambda event: self.setCurrentChannel(channel))
+        if channel != "":
+            channelButton = ctk.CTkButton(self.groupsTab_channelFrame, text=channel, fg_color="grey20", corner_radius=5)
+            nb = len(self.groupsTab_channelFrame.winfo_children())
+            channelButton.grid(row=nb, column=0, padx=5, pady=5, sticky="nsew")
+            channelButton.bind("<Button-1>", lambda event: self.setCurrentChannel(channel))
+        else:
+            NotificationPopup(self, "Channel can't be empty")
+
+    # Messages management
+    def setMessage(self, message:str):
+        self.message = message
+        self.friendsTab_inputEntry.delete("1.0", ctk.END)
+        self.groupsTab_inputEntry.delete("1.0", ctk.END)
+
+    def setCurrentGroup(self, group:str):
+        self.currentGroup = ""
+        def delayCallback():
+            self.currentGroup = group
+            self.resetChannels()
+            self.resetMessages()
+            for channels in self.groupsTab_channelFrame.winfo_children()[1:]:
+                channels.destroy()
+            self.groupsTab_titleBar.configure(text=self.currentGroup)
+            self.initChannels()
+        self.after(100, delayCallback)
+
+    def setCurrentChannel(self, channel:str):
+        self.channel = ""
+        def delayCallback():
+            self.currentChannel = channel
+            self.resetMessages()
+            self.renderMessages()
+            self.groupsTab_titleBar.configure(text=f"{self.currentGroup} - {self.currentChannel}")
+        self.after(100, delayCallback)
+
+    def setCurrentPrivate(self, channel:str):
+        self.currentGroup = ""
+        def delayCallback():
+            self.currentGroup = "private"
+            self.currentChannel = channel
+            self.resetChannels()
+            self.resetMessages()
+            self.renderMessages()
+            self.friendsTab_titleBar.configure(text=f"Private - {self.currentChannel}")
+        self.after(100, delayCallback)
+
+    def resetMessages(self):
+        for messages in self.friendsTab_chatFrame.winfo_children():
+            messages.destroy()
+        for messages in self.groupsTab_chatFrame.winfo_children():
+            messages.destroy()
+        self.friendsTab_titleBar.configure(text="")
+        self.groupsTab_titleBar.configure(text="")
 
     def addFriendMessage(self, sender:str, date:str, message:str):
         today = datetime.now().strftime("%d/%m/%Y")
         date = date.split(" ")[1] if date.split(" ")[0] == today else date
         msg = ctk.CTkLabel(self.friendsTab_chatFrame, text=f"{sender}       {date}\n{message}", fg_color="grey20", corner_radius=5, anchor="w", justify="left")
-        msg.grid(row=len(self.friendsMessages), column=0, padx=5, pady=5, sticky="nsew")
+        msg.grid(row=len(self.friendsTab_chatFrame.winfo_children()), column=0, padx=5, pady=5, sticky="nsew")
         msg.configure(wraplength=msg.winfo_width()-10)
 
         def createSelectable(event:any):
@@ -383,6 +493,24 @@ class App(ctk.CTk):
             textbox.configure(state="disabled")
 
         def createMenu(event:any):
+            def copyAll():
+                self.clipboard_clear()
+                self.clipboard_append(msg.cget("text"))
+                self.update()
+            def copyMessage():
+                self.clipboard_clear()
+                text = msg.cget("text").split("\n")[1:]
+                self.clipboard_append("\n".join(text))
+                self.update()
+            def reply():
+                text = msg.cget("text").split("\n")
+                for i in range(len(text)):
+                    text[i] = "│    " + text[i]
+                    self.friendsTab_inputEntry.insert(f"{i+1}.0", text[i] + "\n")
+                self.friendsTab_inputEntry.insert(ctk.END, "└─\n")
+                self.friendsTab_inputEntry.see(ctk.END)
+                self.friendsTab_inputEntry.focus()
+
             window = FloatingMenu(150, 200, event.x_root, event.y_root)
             mainFrame = ctk.CTkFrame(window, fg_color="grey20")
             mainFrame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
@@ -403,6 +531,25 @@ class App(ctk.CTk):
             replyButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
 
             window.bind("<Button-1>", lambda event: window.after(100, window.destroy))
+
+        msg.bind("<Double-Button-1>", createSelectable)
+        msg.bind("<Button-3>", createMenu)
+
+    def addGroupMessage(self, sender:str, date:str, message:str):
+        today = datetime.now().strftime("%d/%m/%Y")
+        date = date.split(" ")[1] if date.split(" ")[0] == today else date
+        msg = ctk.CTkLabel(self.groupsTab_chatFrame, text=f"{sender}       {date}\n{message}", fg_color="grey20", corner_radius=5, anchor="w", justify="left")
+        msg.grid(row=len(self.groupsTab_chatFrame.winfo_children()), column=0, padx=5, pady=5, sticky="nsew")
+        msg.configure(wraplength=msg.winfo_width()-10)
+
+        def createSelectable(event:any):
+            window = FloatingMenu(msg.winfo_width()+20, msg.winfo_height()+40, msg.winfo_rootx()-10, msg.winfo_rooty()-10)
+            textbox = ctk.CTkTextbox(window, fg_color="grey20", wrap="word")
+            textbox.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+            textbox.insert("1.0", msg.cget("text"))
+            textbox.configure(state="disabled")
+
+        def createMenu(event:any):
             def copyAll():
                 self.clipboard_clear()
                 self.clipboard_append(msg.cget("text"))
@@ -416,29 +563,11 @@ class App(ctk.CTk):
                 text = msg.cget("text").split("\n")
                 for i in range(len(text)):
                     text[i] = "│    " + text[i]
-                    self.friendsTab_inputEntry.insert(f"{i+1}.0", text[i] + "\n")
-                self.friendsTab_inputEntry.insert(ctk.END, "└─\n")
-                self.friendsTab_inputEntry.see(ctk.END)
-                self.friendsTab_inputEntry.focus()
+                    self.groupsTab_inputEntry.insert(f"{i+1}.0", text[i] + "\n")
+                self.groupsTab_inputEntry.insert(ctk.END, "└─\n")
+                self.groupsTab_inputEntry.see(ctk.END)
+                self.groupsTab_inputEntry.focus()
 
-        msg.bind("<Double-Button-1>", createSelectable)
-        msg.bind("<Button-3>", createMenu)
-
-    def addGroupMessage(self, sender:str, date:str, message:str):
-        today = datetime.now().strftime("%d/%m/%Y")
-        date = date.split(" ")[1] if date.split(" ")[0] == today else date
-        msg = ctk.CTkLabel(self.groupsTab_chatFrame, text=f"{sender}       {date}\n{message}", fg_color="grey20", corner_radius=5, anchor="w", justify="left")
-        msg.grid(row=len(self.groupsMessages), column=0, padx=5, pady=5, sticky="nsew")
-        msg.configure(wraplength=msg.winfo_width()-10)
-
-        def createSelectable(event:any):
-            window = FloatingMenu(msg.winfo_width()+20, msg.winfo_height()+40, msg.winfo_rootx()-10, msg.winfo_rooty()-10)
-            textbox = ctk.CTkTextbox(window, fg_color="grey20", wrap="word")
-            textbox.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-            textbox.insert("1.0", msg.cget("text"))
-            textbox.configure(state="disabled")
-
-        def createMenu(event:any):
             window = FloatingMenu(150, 200, event.x_root, event.y_root)
             mainFrame = ctk.CTkFrame(window, fg_color="grey20")
             mainFrame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
@@ -459,23 +588,6 @@ class App(ctk.CTk):
             replyButton.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
             
             window.bind("<Button-1>", lambda event: window.after(100, window.destroy))
-            def copyAll():
-                self.clipboard_clear()
-                self.clipboard_append(msg.cget("text"))
-                self.update()
-            def copyMessage():
-                self.clipboard_clear()
-                text = msg.cget("text").split("\n")[1:]
-                self.clipboard_append("\n".join(text))
-                self.update()
-            def reply():
-                text = msg.cget("text").split("\n")
-                for i in range(len(text)):
-                    text[i] = "│    " + text[i]
-                    self.groupsTab_inputEntry.insert(f"{i+1}.0", text[i] + "\n")
-                self.groupsTab_inputEntry.insert(ctk.END, "└─\n")
-                self.groupsTab_inputEntry.see(ctk.END)
-                self.groupsTab_inputEntry.focus()
 
         msg.bind("<Double-Button-1>", createSelectable)
         msg.bind("<Button-3>", createMenu)
@@ -491,16 +603,23 @@ class App(ctk.CTk):
     def resize(self):
         if self._RESIZING:
             return
-        for friend in self.friendsMessages:
-            for msg in self.friendsMessages[friend]:
+        if self.currentGroup == "private":
+            for msg in self.friendsTab_chatFrame.winfo_children():
+                # resize message only if visible
+                if msg.winfo_viewable():
+                    msg.configure(wraplength=msg.winfo_width()-10)
+        else:
+            for msg in self.groupsTab_chatFrame.winfo_children():
                 # resize message only if visible
                 if msg.winfo_viewable():
                     msg.configure(wraplength=msg.winfo_width()-10)
 
     def run(self):
+        self.initFriends()
+        self.initGroups()
         self.mainloop()
 
 
 if __name__ == "__main__":
     app = App()
-    app.mainloop()
+    app.run()

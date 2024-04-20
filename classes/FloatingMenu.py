@@ -2,7 +2,7 @@ import customtkinter as ctk
 
 class FloatingMenu(ctk.CTkToplevel):
     """FloatingMenu class"""
-    def __init__(self, width, height, x=0, y=0):
+    def __init__(self, width, height, x=0, y=0, noFocus=False):
         """Constructor for FloatingMenu class"""
         super().__init__()
         self.overrideredirect(True)
@@ -13,6 +13,7 @@ class FloatingMenu(ctk.CTkToplevel):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        self.after(50, self.focus_set)
-        self.bind("<Escape>", lambda event: self.destroy())
-        self.bind("<FocusOut>", lambda event: self.destroy())
+        if not noFocus:
+            self.after(50, self.focus_set)
+            self.bind("<Escape>", lambda event: self.destroy())
+            self.bind("<FocusOut>", lambda event: self.destroy())

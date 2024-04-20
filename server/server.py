@@ -9,7 +9,6 @@ class Server:
         # initialize server files
         if not os.path.exists("./serverData"):
             os.mkdir("./serverData")
-            json.dump({}, open("./serverData/users.json", "w"))
             json.dump({}, open("./serverData/groups.json", "w"))
             json.dump({}, open("./serverData/privateMessages.json", "w"))
         self._HOST = input("Enter the server IP address: ")
@@ -57,6 +56,8 @@ class Server:
 
     def manageData(self, data):
         try:
+            if data["Group"] == "":
+                return
             if data["group"] == "private":
                 message = data["msg"]["message"]
                 sender = data["msg"]["sender"]
