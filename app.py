@@ -17,7 +17,6 @@ class App(ctk.CTk):
         self.geometry("800x480")
         self.minsize(800, 480)
         self.resizable(True, True)
-        ctk.set_appearance_mode("dark")
 
         self._MAX_MESSAGE = 100 # Init variables
         self.runNetwork = True
@@ -41,6 +40,8 @@ class App(ctk.CTk):
             json.dump({}, open("./data/privateMessages.json", "w"))
             json.dump({}, open("./data/groups.json", "w"))
             json.dump({}, open("./data/settings.json", "w"))
+            ctk.set_appearance_mode("dark")
+            self.settingsTab_switchTheme.select()
             self.username = ""
             self._HOST = "" # Set default values for settings
             self._PORT = ""
