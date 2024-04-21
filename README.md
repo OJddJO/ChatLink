@@ -6,7 +6,7 @@
 ## Installation
 ### Client Installation
 1. Go to the release page of the repository.
-2. Download the `ChatLink_installer.exe` file.
+2. Download the `ChatLink_install.exe` file.
 3. Execute the installer.
 4. Follow the instructions.
 
