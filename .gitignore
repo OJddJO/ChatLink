@@ -2,3 +2,4 @@ test/
 data/
 output/
 ChatLink_install.exe
+__pycache__/
