@@ -1,6 +1,6 @@
 # ChatLink: a simple chat application
 
-![<img src="assets/icon.png" width="200"/>](assets/icon.png)
+![icon](assets/icon.png)
 <p style="text-align: center;">Chat link is a simple chat application that allows users to chat with each other. The application is built using Python.</p>
 
 ## Installation
