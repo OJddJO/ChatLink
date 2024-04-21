@@ -147,7 +147,7 @@ class App(ctk.CTk):
                         if self.currentGroup != currentGroup or self.currentChannel != element["channel"] or self.currentChannel != currentChannel:
                             return
                         self.addFriendMessage(element["sender"], element["time"], element["message"])
-                    if self.currentGroup == currentGroup and self.currentChannel == data[0] and self.currentChannel == currentChannel:
+                    if self.currentGroup == currentGroup and self.currentChannel == currentChannel:
                         self.saveData()
                 else: # Else add messages to channel
                     changes = False
@@ -160,7 +160,7 @@ class App(ctk.CTk):
                             if len(self.privateMessages[data[0]]) > 100:
                                 self.privateMessages[data[0]].pop(0)
                             self.addFriendMessage(element["sender"], element["time"], element["message"])
-                    if changes and self.currentGroup == currentGroup and self.currentChannel == data[0] and self.currentChannel == currentChannel:
+                    if changes and self.currentGroup == currentGroup and self.currentChannel == currentChannel:
                         self.saveData()
             else: # Group
                 if currentGroup not in self.groups: # Create group if not exists
@@ -168,23 +168,23 @@ class App(ctk.CTk):
                 if data[0] not in self.groups[currentGroup]: # Create channel if not exists and add all the messages
                     self.groups[currentGroup][data[0]] = data[1]
                     for element in data[1]:
-                        if self.currentGroup != currentGroup or self.currentChannel != element["channel"] or self.currentChannel != currentChannel:
+                        if self.currentGroup != currentGroup or self.currentChannel != currentChannel:
                             return
                         self.addGroupMessage(element["sender"], element["time"], element["message"])
-                    if self.currentGroup == currentGroup and self.currentChannel == data[0] and self.currentChannel == currentChannel:
+                    if self.currentGroup == currentGroup and self.currentChannel == currentChannel:
                         self.saveData()
                 else: # Else add messages to channel
                     changes = False
                     for element in data[1]:
                         if element not in self.groups[currentGroup][data[0]]:
-                            if self.currentGroup == currentGroup and self.currentChannel == element["channel"] and self.currentChannel == currentChannel:
+                            if self.currentGroup == currentGroup and self.currentChannel == currentChannel:
                                 return
                             changes = True
                             self.groups[currentGroup][data[0]].append(element)
                             if len(self.groups[currentGroup][data[0]]) > 100:
                                 self.groups[currentGroup][data[0]].pop(0)
                             self.addGroupMessage(element["sender"], element["time"], element["message"])
-                    if changes and self.currentGroup == currentGroup and self.currentChannel == data[0] and self.currentChannel == currentChannel:
+                    if changes and self.currentGroup == currentGroup and self.currentChannel == currentChannel:
                         self.saveData()
         except Exception as e:
             pass
