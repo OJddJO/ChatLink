@@ -12,7 +12,7 @@
 
 ### Server Installation
 Requirements:
-- Python 3.6 or higher (tested on Python 3.10.8)
+- Python 3 (tested on Python 3.10.8)
 
 1. Go to the release page of the repository.
 2. Download the `server.py` file.
