@@ -1,4 +1,5 @@
 # ChatLink: a simple chat application
+*In development, not working*
 <p align="center">
   <img width="320" height="320" src="assets/icon.png">
 </p>
